@@ -1,0 +1,40 @@
+Name:                svg-diagrams
+Version:             0.1
+Synopsis:            Parse svg files for diagrams
+Description:         Parse svg files for the diagrams DSL using xml-conduits.
+License:             BSD3
+License-file:        LICENSE
+Author:              Tillmann Vogt
+Maintainer:          diagrams-discuss@googlegroups.com
+Copyright:           Tillmann Vogt (2014)
+Category:            Graphics, Diagrams
+Build-type:          Simple
+Cabal-version:       >=1.6
+
+Library
+  Exposed-modules:    Diagrams.SVG.ReadSVG
+                      Diagrams.SVG.Attributes
+                      Diagrams.SVG.Path
+  Build-depends:      base == 4.*
+                    , xml-conduit
+                    , conduit
+                    , attoparsec >= 0.10
+                    , time == 1.4.*
+                    , text >= 0.11
+                    , xml-types == 0.3.*
+                    , old-locale == 1.0.*
+                    , filepath == 1.3.*
+                    , monad-control == 0.3.*
+                    , void >= 0.6
+                    , colour
+                    , system-filepath
+                    , diagrams-lib
+                    , diagrams
+                    , diagrams-svg
+                    , resourcet
+                    , unordered-containers
+                    , bytestring
+                    , tuple
+                    , split
+  -- Other-modules:       
+  -- Build-tools:   
