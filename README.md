@@ -38,7 +38,7 @@ into:
 ```
 
 This will not be necessary with a new version of xml-conduit.
-Another problem is that css is not parsed yet. Some SVGs use CSS-classses for colouring.
+Another problem is that CSS with the style-tag is not parsed yet. Some SVGs use CSS-classses for colouring.
 But then it is likely that it works.
 
 
@@ -53,7 +53,9 @@ readSVGFile :: FilePath -> Double -> Double -> PreserveAR -> IO (Diagram B R2)
 readSVGFile fp width height preserveAR =
 ```
 
-Usage example:
+To understand preserveAR, look at 
+[SVG Spec: Preserve Aspect ratio](www.w3.org/TR/SVG11/coords.html#PreserveAspectRatioAttribute)
+and the following example:
 
 ```xml
 {-# LANGUAGE OverloadedStrings #-}
