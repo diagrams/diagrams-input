@@ -9,7 +9,7 @@ Issues
 
 To load a SVG file into your diagram you currently have to delete the xmlns namespace in the SVG tag and delete all attributes that have prefixes. E.g. edit the following:
 
-<svg
+svg
    xmlns:dc="http://purl.org/dc/elements/1.1/"
    xmlns:cc="http://web.resource.org/cc/"
    xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
@@ -23,15 +23,15 @@ To load a SVG file into your diagram you currently have to delete the xmlns name
    sodipodi:version="0.32"
    inkscape:version="0.45.1"
    version="1.0"
-   inkscape:output_extension="org.inkscape.output.svg.inkscape">
+   inkscape:output_extension="org.inkscape.output.svg.inkscape"
 
 into:
 
-<svg
+svg
    width="300"
    height="300"
    id="svg2"
-   version="1.0">
+   version="1.0"
 
 This will not be necessary with a new version of xml-conduit.
 Another problem is that css is not parsed yet. Some SVGs use CSS-classses for colouring.
