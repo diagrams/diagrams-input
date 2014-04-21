@@ -46,7 +46,7 @@ But then it is likely that it works.
 
 
 
-Main library function:
+Main library function
 ======================
 ```xml
 readSVGFile :: FilePath -> Double -> Double -> PreserveAR -> IO (Diagram B R2)
@@ -54,7 +54,7 @@ readSVGFile fp width height preserveAR =
 ```
 
 To understand preserveAR, look at 
-[SVG Spec: Preserve Aspect ratio](www.w3.org/TR/SVG11/coords.html#PreserveAspectRatioAttribute)
+[SVG Spec: Preserve Aspect ratio](http://www.w3.org/TR/SVG11/coords.html#PreserveAspectRatioAttribute)
 and the following example:
 
 ```xml
