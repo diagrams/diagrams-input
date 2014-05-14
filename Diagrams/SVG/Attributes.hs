@@ -11,7 +11,41 @@
 -- Stability : stable
 -- Portability: portable
 
-module Diagrams.SVG.Attributes where
+module Diagrams.SVG.Attributes 
+    (
+    -- * Classes of attributes
+      CoreAttributes(..)
+    , ConditionalProcessingAttributes(..)
+    , DocumentEventAttributes(..)
+    , GraphicalEventAttributes(..)
+    , XlinkAttributes(..)
+    , FilterPrimitiveAttributes(..)
+    , NameSpaces(..)
+    -- * General Parsing Functions
+    , separatedBy
+    , parseOne
+    , parseOne'
+    , compose
+    , parseDouble
+    , parsePoints
+    -- * Transformations
+    , applyTr
+    , parseTr
+    -- * Parsing the style attribute
+    , PresentationAttributes(..)
+    , applyStyleSVG
+    , parseStyles
+    , parsePA
+    , fragment
+    , p
+    -- * Parsing Colors
+    -- * Parsing preserve aspect ratio
+    , PreserveAR(..)
+    , AlignSVG(..)
+    , Place(..)
+    , MeetOrSlice(..)
+    )
+where
 
 import Data.Attoparsec.Combinator
 import Data.Attoparsec.Text
@@ -34,7 +68,7 @@ import Debug.Trace
 ---------------------------------------------------
 
 data CoreAttributes =
-   CA { id_      :: Maybe Text
+   CA { id1      :: Maybe Text
       , xmlbase  :: Maybe Text
       , xmllang  :: Maybe Text
       , xmlspace :: Maybe Text
@@ -86,6 +120,16 @@ data FilterPrimitiveAttributes =
        , result :: Maybe Text
        }
 
+data NameSpaces =
+   NSP { xlink    :: Maybe Text
+       , dc       :: Maybe Text
+       , cc       :: Maybe Text
+       , rdf      :: Maybe Text
+       , svg      :: Maybe Text
+       , sodipodi :: Maybe Text
+       , inkscape :: Maybe Text
+       } deriving Show
+
 --------------------------------------------------------------------------------
 -- general parsing functions
 --------------------------------------------------------------------------------
@@ -109,8 +153,6 @@ compose fs v = Prelude.foldl (flip (.)) id fs $ v
 
 parseDouble :: Text -> Double
 parseDouble l = either (const 0) id (AT.parseOnly AT.double l)
-
-p x = maybe 0 parseDouble x
 
 pp = parseDouble . pack
 
@@ -191,13 +233,13 @@ getTransformations (SkewX (T1 x)) = id
 getTransformations (SkewY (T1 y)) = id
 
 -- http://math.stackexchange.com/questions/13150/extracting-rotation-scale-values-from-2d-transformation-matrix/13165#13165
-matrixDecompose (Matrix m11 m12 m21 m22 m31 m32) = (rotation, scaleX, scaleY, transX, transY)
+matrixDecompose (Matrix m11 m12 m21 m22 m31 m32) = (rotation, scX, scY, transX, transY)
   where
     rotation = atan2 m12 m21
-    scaleX | m11 >= 0  =   sqrt (m11*m11 + m21*m21)
-           | otherwise = - sqrt (m11*m11 + m21*m21)
-    scaleY | m22 >= 0  =   sqrt (m12*m12 + m22*m22)
-           | otherwise = - sqrt (m12*m12 + m22*m22)
+    scX | m11 >= 0  =   sqrt (m11*m11 + m21*m21)
+        | otherwise = - sqrt (m11*m11 + m21*m21)
+    scY | m22 >= 0  =   sqrt (m12*m12 + m22*m22)
+        | otherwise = - sqrt (m12*m12 + m22*m22)
     (transX, transY) = (m31, m32)
 
 matr =
@@ -321,7 +363,7 @@ parsePA pa = catMaybes
               (parseTempl styleFillRuleVal)         (fillRuleSVG pa),
               (parseTempl styleFillOpacityVal)      (fillOpacity pa),
               (parseTempl styleStrokeVal)           (strokeSVG pa),
-              (parseTempl styleStrokeWidthVal)      (strokeWidth pa),
+              (parseTempl styleStrokeWidth)         (strokeWidth pa),
               (parseTempl styleStrokeLineCapVal)    (strokeLinecap pa),
               (parseTempl styleStrokeLineJoinVal)   (strokeLinejoin pa),
               (parseTempl styleStrokeMiterLimitVal) (strokeMiterlimit pa)]
@@ -336,6 +378,7 @@ data SVGStyle a = Fill (Colour a)   | FillOpacity Double | FillRule FR
                 | Stroke (Colour a) | StrokeWidth Double | StrokeLineCap LineCap | StrokeLineJoin LineJoin
                 | StrokeMiterLimit Double | StrokeOpacity Double  deriving (Show)
 
+data Unit = EM | EX | PX | IN | CM | MM | PT | PC deriving (Show)
 data FR = Even_Odd | Nonzero | Inherit  deriving (Show)
 
 parseStyles :: (Floating a, Ord a) => Maybe Text -> [(SVGStyle a)]
@@ -351,6 +394,25 @@ parseStyle = AT.choice [styleFill, styleFillOpacity, styleFillRule,
 parseTempl p = (either (const Nothing) Just) .
                (AT.parseOnly p).
                (fromMaybe empty)
+
+p x = fromMaybe 0 $ parseTempl styleLength x
+
+parseIRI = do AT.choice [ funcIRI, absoluteOrRelativeIRI ]
+
+funcIRI =
+  do AT.skipSpace
+     AT.string "url("
+     absrel <- parseUntil '#'
+     fragment <- parseUntil ')'
+     return (T.pack absrel, T.pack fragment)
+
+absoluteOrRelativeIRI =
+  do AT.skipSpace
+     absrel <- parseUntil '#'
+     fragment <- takeText
+     return (T.pack absrel, fragment)
+
+fragment x = fromMaybe T.empty $ fmap snd (parseTempl parseIRI x) -- look only for the text after "#"
 
 -- applyStyleSVG :: 
 applyStyleSVG styles = compose (map getStyles styles)
@@ -414,11 +476,35 @@ styleStrokeVal =
 styleStrokeWidth =
   do AT.skipSpace
      AT.string "stroke-width:"
-     styleStrokeWidthVal
+     (fmap StrokeWidth styleLength)
 
-styleStrokeWidthVal =
+styleLength = do AT.choice [ styleLengthWithUnit, double ]
+
+styleLengthWithUnit =
   do w <- double
-     return (StrokeWidth w)
+     u <- styleUnit
+     return (w * (unitFactor u))
+
+
+styleUnit = do AT.choice [styleEM,styleEX,stylePX,styleIN,styleCM,styleMM,stylePT,stylePC]
+
+styleEM = do { AT.choice [AT.string "em", AT.string "EM"]; return EM }
+styleEX = do { AT.choice [AT.string "ex", AT.string "EX"]; return EX }
+stylePX = do { AT.choice [AT.string "px", AT.string "PX"]; return PX }
+styleIN = do { AT.choice [AT.string "in", AT.string "IN"]; return IN }
+styleCM = do { AT.choice [AT.string "cm", AT.string "CM"]; return CM }
+styleMM = do { AT.choice [AT.string "mm", AT.string "MM"]; return MM }
+stylePT = do { AT.choice [AT.string "pt", AT.string "PT"]; return PT }
+stylePC = do { AT.choice [AT.string "pc", AT.string "PC"]; return PC }
+
+unitFactor EM = 1
+unitFactor EX = 1
+unitFactor PX = 1
+unitFactor IN = 90
+unitFactor CM = 35.43307
+unitFactor MM = 3.543307
+unitFactor PT = 1.25
+unitFactor PC = 15
 
 -- example: "stroke-linecap:butt"
 styleStrokeLineCap =
@@ -521,9 +607,9 @@ colorNone =
 -- e.g. preserveAspectRatio="xMaxYMax meet"
 -------------------------------------------------------------------------------------
 
-data PreserveAR = PAR AlignSVG MeetOrSlice
-data AlignSVG = AlignXY Place Place
-data Place = PMin | PMid | PMax
+data PreserveAR = PAR AlignSVG MeetOrSlice -- ^ inspired by the way images are included in SVG, see <http://www.w3.org/TR/SVG11/coords.html#PreserveAspectRatioAttribute>
+data AlignSVG = AlignXY Place Place -- ^ alignment in x and y direction
+type Place = Double -- ^ A value between 0 and 1, where 0 is the minimal value and 1 the maximal value
 data MeetOrSlice = Meet | Slice
 
 preserveAR =
@@ -544,38 +630,38 @@ slice =
 
 alignXMinYMin =
    do AT.string "xMinYMin"
-      return (AlignXY PMin PMin)
+      return (AlignXY 0 0)
 
 alignXMidYMin =
    do AT.string "xMidYMin"
-      return (AlignXY PMid PMin)
+      return (AlignXY 0.5 0)
 
 alignXMaxYMin =
    do AT.string "xMaxYMin"
-      return (AlignXY PMax PMin)
+      return (AlignXY 1 0)
 
 alignXMinYMid =
    do AT.string "xMinYMid"
-      return (AlignXY PMin PMid)
+      return (AlignXY 0 0.5)
 
 alignXMidYMid =
    do AT.string "xMidYMid"
-      return (AlignXY PMid PMid)
+      return (AlignXY 0.5 0.5)
 
 alignXMaxYMid =
    do AT.string "xMaxYMid"
-      return (AlignXY PMax PMid)
+      return (AlignXY 1 0.5)
 
 alignXMinYMax =
    do AT.string "xMinYMax"
-      return (AlignXY PMin PMax)
+      return (AlignXY 0 1)
 
 alignXMidYMax =
    do AT.string "xMidYMax"
-      return (AlignXY PMid PMax)
+      return (AlignXY 0.5 1)
 
 alignXMaxYMax =
    do AT.string "xMaxYMax"
-      return (AlignXY PMax PMax)
+      return (AlignXY 1 1)
 
 
