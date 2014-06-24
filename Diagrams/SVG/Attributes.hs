@@ -36,6 +36,7 @@ module Diagrams.SVG.Attributes
     , applyStyleSVG
     , parseStyles
     , parsePA
+    , cssStylesFromMap
     , fragment
     , p
     -- * Parsing Colors
@@ -55,7 +56,7 @@ import Data.Colour.Names (readColourName)
 import Data.Colour.SRGB
 import Data.Maybe (fromMaybe, fromJust, isJust, isNothing, maybeToList, catMaybes)
 import qualified Data.Text as T
-import Data.Text(Text(..), pack, unpack, empty)
+import Data.Text(Text(..), pack, unpack, empty, cons, snoc, append)
 import Data.Tuple.Select
 import Diagrams.Attributes
 import Diagrams.Path
@@ -63,7 +64,11 @@ import Diagrams.Segment
 import Diagrams.TwoD.Types
 import Diagrams.Prelude
 import Diagrams.SVG.Path
-import Debug.Trace
+import Text.CSS.Parse
+import qualified Data.HashMap.Strict as H
+import Data.Colour.RGBSpace.HSL (hsl)
+import Data.Word (Word8)
+-- import Debug.Trace
 
 ---------------------------------------------------
 
@@ -381,14 +386,26 @@ data SVGStyle a = Fill (Colour a)   | FillOpacity Double | FillRule FR
 data Unit = EM | EX | PX | IN | CM | MM | PT | PC deriving (Show)
 data FR = Even_Odd | Nonzero | Inherit  deriving (Show)
 
-parseStyles :: (Floating a, Ord a) => Maybe Text -> [(SVGStyle a)]
+parseStyles :: (Read a, Floating a, RealFrac a, Ord a) => Maybe Text -> [(SVGStyle a)]
 parseStyles = (either (const []) id) .
-              (AT.parseOnly (separatedBy parseStyle ";")).
+              (AT.parseOnly (separatedBy parseStyleAttr ";")).
               (fromMaybe empty)
 
-parseStyle = AT.choice [styleFill, styleFillOpacity, styleFillRule, 
-                        styleStroke, styleStrokeWidth, styleStrokeLineCap, styleStrokeLineJoin,
-                        styleStrokeMiterLimit]
+parseStyleAttr = AT.choice [styleFill, styleFillOpacity, styleFillRule, 
+                            styleStroke, styleStrokeWidth, styleStrokeLineCap, styleStrokeLineJoin,
+                            styleStrokeMiterLimit]
+
+-- This function is called on every tag and returns a list of style-attributes to apply (if there is a rule that matches)
+-- TO DO: CSS2 + CSS3 selectors
+cssStylesFromMap :: (Read a, Floating a, RealFrac a, Ord a) => H.HashMap Text [(Text, Text)] -> Text -> Maybe Text -> Maybe Text -> [(SVGStyle a)]
+cssStylesFromMap hmap tagName id_ class_ = parseStyles ( Just ( T.concat ( map f attributes ) ) )
+  where f (attr, val) = (attr `snoc` ':') `append` (val `snoc` ';')
+        styleFromClass cl = [H.lookup ('.' `cons` cl) hmap] ++ [H.lookup (tagName `append` ('.' `cons` cl)) hmap]
+        attributes = concat $ catMaybes
+                   ( [H.lookup "*" hmap] ++    -- apply this style to every element
+                     (if isJust id_ then [H.lookup ('#' `cons` (fromJust id_)) hmap] else []) ++
+                     (concat (map styleFromClass (if isJust class_ then T.words $ fromJust class_ else [])))
+                   )
 
 -- parseTempl :: (Floating a, Ord a) => Parser a -> Maybe Text -> Maybe a
 parseTempl p = (either (const Nothing) Just) .
@@ -414,8 +431,7 @@ absoluteOrRelativeIRI =
 
 fragment x = fromMaybe T.empty $ fmap snd (parseTempl parseIRI x) -- look only for the text after "#"
 
--- applyStyleSVG :: 
-applyStyleSVG styles = compose (map getStyles styles)
+applyStyleSVG styles hmap = compose (map getStyles (styles hmap))
 
 getStyles (Fill x) = fc x
 getStyles (FillOpacity d) = id -- we currently don't differentiate between fill opacity and stroke opacity
@@ -424,7 +440,7 @@ getStyles (FillRule Nonzero) = id
 getStyles (FillRule Inherit) = id
 
 getStyles (Stroke x) = lc x
-getStyles (StrokeWidth x) = lw x
+getStyles (StrokeWidth x) = lwL x
 getStyles (StrokeLineCap x) = lineCap x
 getStyles (StrokeLineJoin x) = lineJoin x
 getStyles (StrokeMiterLimit x) = id
@@ -437,7 +453,7 @@ styleFill =
      styleFillVal
 
 styleFillVal =
-  do c <- AT.choice [colorRRGGBB, colorRGB, colorString, colorNone]
+  do c <- AT.choice [colorRRGGBB, colorRGB, colorString, colorHSL, colorNone]
      return (Fill c)
 
 -- example: style="fill-rule:evenodd"
@@ -469,7 +485,7 @@ styleStroke =
      styleStrokeVal
 
 styleStrokeVal =
-  do c <- AT.choice [colorRRGGBB, colorRGB, colorString, colorNone]
+  do c <- AT.choice [colorRRGGBB, colorRGB, colorString, colorHSL, colorNone]
      return (Stroke c)
 
 -- example: style="stroke-width:0.503546"
@@ -598,9 +614,23 @@ colorRRGGBB =
                      (fromIntegral ((digitToInt h2) * 16 + (digitToInt h3)) )
                      (fromIntegral ((digitToInt h4) * 16 + (digitToInt h5)) )
 
+colorHSL =
+  do AT.string "hsl"
+     AT.skipSpace
+     AT.char '('
+     h <- parseUntil ','
+     s <- parseUntil '%'
+     AT.skipSpace
+     AT.char ','
+     l <- parseUntil '%'
+     AT.skipSpace
+     AT.char ')'
+     let c = hsl (read h) (read s) (read l)
+     return (sRGB (channelRed c) (channelGreen c) (channelBlue c))
+
 colorNone =
   do AT.string "none"
-     return $ sRGB24 0 0 0
+     return (sRGB24 0 0 0)
 
 -------------------------------------------------------------------------------------
 -- Parsing preserve aspect ratio

@@ -141,6 +141,7 @@ commandsToTrails pathCommands = map fst $ foldl' outline [] (splittedCommands pa
 
 
 -- | split list when there is a (M)oveto command (and keep the M)
+--   and merge repeated lists of single Ms into one M command
 splittedCommands pathCommands = mergeSingleMs $ S.split (S.keepDelimsL (S.whenElt isM)) pathCommands
   where
     isM (M ar p) = True
