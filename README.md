@@ -26,13 +26,11 @@ into:
    id="svg2"
 ```
 
-Another problem is that CSS with the style-tag is not parsed yet. Some SVGs use CSS-classses for colouring.
-But then it is likely that it works.
-
-
-
-
-
+Other things still on the TO DO list
+- gradients
+- bug in the arc-command for paths
+- text
+- full support for CSS
 
 Main library function
 ======================
