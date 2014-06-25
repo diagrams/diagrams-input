@@ -36,5 +36,8 @@ Library
                     , bytestring
                     , tuple
                     , split
+                    , exceptions
+                    , resourcet
+                    , css-text
   -- Other-modules:       
   -- Build-tools:   
