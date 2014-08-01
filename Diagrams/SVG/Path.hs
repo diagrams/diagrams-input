@@ -166,46 +166,43 @@ outline paths cs = paths ++ [(newPath,newPoint)]
             mconcat (sel3 concatPaths)
   newPoint = sel2 concatPaths
 
-  concatPaths = foldl' nextSegment ((x, y), (x, y), [], M Rel (0,0)) cs
+  concatPaths = foldl' nextSegment ((x, y), (x, y), []) cs
 
-  traceP (contr,point,path,c) = Debug.Trace.trace (show point) (contr,point,path,c)
+  traceP (contr,point,path) = Debug.Trace.trace (show point) (contr,point,path)
 
   trans | null cs   = (0,0)
-        | otherwise = sel2 $ nextSegment ((x, y), (x, y), [], head cs) Z -- cs usually always starts with a M-command,
-                                                                         -- because we splitted the commands like that
+        | otherwise = sel2 $ nextSegment ((x, y), (x, y), []) (head cs) -- cs usually always starts with a M-command,
+                                                                                  -- because we splitted the commands like that
   (x,y) | null paths = (0,0)
         | otherwise  = snd (last paths)
 
 
 -- | The last control point and end point of the last path are needed to calculate the next line to append
-nextSegment :: ( (X,Y), (X,Y), [Trail' Line R2], PathCommand) -> PathCommand ->
-               ( (X,Y), (X,Y), [Trail' Line R2], PathCommand)
-nextSegment (controlPoint, startPoint, line, Z) command = (controlPoint, startPoint, line, command)
-nextSegment (_, _,       _,    M Abs point) c = (point, point, [], c)
-nextSegment (_, (x0,y0), _,    M Rel (x,y)) c = ((x+x0, y+y0), (x+x0, y+y0), [], c)
-nextSegment (_, (x0,y0), line, L Abs (x,y)) c = ((x,    y   ), (x,    y   ), line ++ [straight' (x-x0, y-y0)], c)
-nextSegment (_, (x0,y0), line, L Rel (x,y)) c = ((x+x0, y+y0), (x+x0, y+y0), line ++ [straight' (x,    y   )], c)
-nextSegment (_, (x0,y0), line, H Abs x) c     = ((x,      y0), (x,      y0), line ++ [straight' (x-x0,    0)], c)
-nextSegment (_, (x0,y0), line, H Rel x) c     = ((x+x0,   y0), (x+x0,   y0), line ++ [straight' (x,       0)], c)
-nextSegment (_, (x0,y0), line, V Abs y) c     = ((  x0, y   ), (  x0, y   ), line ++ [straight' (0 ,   y-y0)], c)
-nextSegment (_, (x0,y0), line, V Rel y) c     = ((  x0, y+y0), (  x0, y+y0), line ++ [straight' (0,    y   )], c)
+nextSegment :: ( (X,Y), (X,Y), [Trail' Line R2]) -> PathCommand -> ( (X,Y), (X,Y), [Trail' Line R2])
+nextSegment (controlPoint, startPoint, line) Z = (controlPoint, startPoint, line)
+nextSegment (_, _,       _   ) (M Abs point) = (point, point, [])
+nextSegment (_, (x0,y0), _   ) (M Rel (x,y)) = ((x+x0, y+y0), (x+x0, y+y0), [])
+nextSegment (_, (x0,y0), line) (L Abs (x,y)) = ((x,    y   ), (x,    y   ), line ++ [straight' (x-x0, y-y0)])
+nextSegment (_, (x0,y0), line) (L Rel (x,y)) = ((x+x0, y+y0), (x+x0, y+y0), line ++ [straight' (x,    y   )])
+nextSegment (_, (x0,y0), line) (H Abs x)     = ((x,      y0), (x,      y0), line ++ [straight' (x-x0,    0)])
+nextSegment (_, (x0,y0), line) (H Rel x)     = ((x+x0,   y0), (x+x0,   y0), line ++ [straight' (x,       0)])
+nextSegment (_, (x0,y0), line) (V Abs y)     = ((  x0, y   ), (  x0, y   ), line ++ [straight' (0 ,   y-y0)])
+nextSegment (_, (x0,y0), line) (V Rel y)     = ((  x0, y+y0), (  x0, y+y0), line ++ [straight' (0,    y   )])
 
-nextSegment (_, (x0,y0), line, C Abs (x1,y1,x2,y2,x,y)) c = ((x2,y2), (x,y), line ++ [bez3 (x1-x0, y1-y0) (x2-x0, y2-y0) (x-x0,y-y0)], c)
-nextSegment (_, (x0,y0), line, C Rel (x1,y1,x2,y2,x,y)) c = ((x2+x0, y2+y0), (x+x0, y+y0), line ++ [bez3 (x1, y1) (x2, y2) (x,y)], c)
+nextSegment (_, (x0,y0), line) (C Abs (x1,y1,x2,y2,x,y)) = ((x2,y2), (x,y), line ++ [bez3 (x1-x0, y1-y0) (x2-x0, y2-y0) (x-x0,y-y0)])
+nextSegment (_, (x0,y0), line) (C Rel (x1,y1,x2,y2,x,y)) = ((x2+x0, y2+y0), (x+x0, y+y0), line ++ [bez3 (x1, y1) (x2, y2) (x,y)])
 
-nextSegment ((cx,cy),(x0,y0), line, S Abs (x2,y2,x,y)) c = ((x2, y2), (x, y), line ++ [bez3 (x0-cx, y0-cy) (x2-x0, y2-y0) (x-x0, y-y0)], c)
-nextSegment ((cx,cy),(x0,y0), line, S Rel (x2,y2,x,y)) c = ((x2+x0, y2+y0), (x+x0, y+y0), line ++ [bez3 (x0-cx, y0-cy) (x2, y2) (x, y)], c)
+nextSegment ((cx,cy),(x0,y0), line) (S Abs (x2,y2,x,y)) = ((x2, y2), (x, y), line ++ [bez3 (x0-cx, y0-cy) (x2-x0, y2-y0) (x-x0, y-y0)])
+nextSegment ((cx,cy),(x0,y0), line) (S Rel (x2,y2,x,y)) = ((x2+x0, y2+y0), (x+x0, y+y0), line ++ [bez3 (x0-cx, y0-cy) (x2, y2) (x, y)])
 
-nextSegment (_, (x0,y0), line, Q Abs (x1,y1,x,y)) c = ((x1, y1),       (x, y), line ++ [bez3 (x1-x0, y1-y0) (x-x0, y-y0) (x-x0, y-y0)], c)
-nextSegment (_, (x0,y0), line, Q Rel (x1,y1,x,y)) c = ((x1+x0, y1+y0), (x+x0, y+y0), line ++ [bez3 (x1, y1) (x, y) (x, y)], c)
+nextSegment (_, (x0,y0), line) (Q Abs (x1,y1,x,y)) = ((x1, y1),       (x, y), line ++ [bez3 (x1-x0, y1-y0) (x-x0, y-y0) (x-x0, y-y0)])
+nextSegment (_, (x0,y0), line) (Q Rel (x1,y1,x,y)) = ((x1+x0, y1+y0), (x+x0, y+y0), line ++ [bez3 (x1, y1) (x, y) (x, y)])
 
-nextSegment ((cx,cy), (x0,y0), line, T Abs (x,y)) c = ((2*x0-cx, 2*y0-cy ), (x, y), line ++
-                                                       [bez3 (x0-cx, y0-cy) (x-x0, y-y0) (x-x0, y-y0)], c)
-nextSegment ((cx,cy), (x0,y0), line, T Rel (x,y)) c = ((2*x0-cx, 2*y0-cy),  (x, y), line ++
-                                                       [bez3 (x0-cx, y0-cy) (x, y) (x, y)], c)
+nextSegment ((cx,cy), (x0,y0), line) (T Abs (x,y)) = ((2*x0-cx, 2*y0-cy ), (x, y), line ++ [bez3 (x0-cx, y0-cy) (x-x0, y-y0) (x-x0, y-y0)])
+nextSegment ((cx,cy), (x0,y0), line) (T Rel (x,y)) = ((2*x0-cx, 2*y0-cy),  (x, y), line ++ [bez3 (x0-cx, y0-cy) (x, y) (x, y)])
 
-nextSegment (_, (x0,y0), line, A Abs (rx,ry,xAxisRot,fl0,fl1,x,y) ) c = (n, n, line ++ [svgArc (rx,ry) xAxisRot fl0 fl1 (x, y)], c)
-nextSegment (_, (x0,y0), line, A Rel (rx,ry,xAxisRot,fl0,fl1,x,y) ) c = (n, n, line ++ [svgArc (rx,ry) xAxisRot fl0 fl1 (x, y)], c)
+nextSegment (_, (x0,y0), line) (A Abs (rx,ry,xAxisRot,fl0,fl1,x,y) ) = (n, n, line ++ [svgArc (rx,ry) xAxisRot fl0 fl1 (x, y)])
+nextSegment (_, (x0,y0), line) (A Rel (rx,ry,xAxisRot,fl0,fl1,x,y) ) = (n, n, line ++ [svgArc (rx,ry) xAxisRot fl0 fl1 (x, y)])
 
 n = (0,0)
 

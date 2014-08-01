@@ -105,8 +105,8 @@ import Debug.Trace
 --    mainWith $ diagramFromSVG
 -- @
 --
-readSVGFile :: FilePath -> Width -> Height -> PreserveAR -> IO (Diagram B R2)
-readSVGFile fp width height preserveAR =
+readSVGFile :: PreserveAR -> Width -> Height -> FilePath -> IO (Diagram B R2)
+readSVGFile preserveAR width height fp =
   do tree <- runResourceT $ parseFile def fp $$ force "svg tag required" parseSVG 
               -- (C.map stripNamespace parseSVG)
      let ns = -- Debug.Trace.trace ("tree" ++ show  tree ++ "\n") $
