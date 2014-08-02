@@ -262,7 +262,7 @@ parseG = tagName "g" gAttrs
 gContent = choose [parseDesc, parseMetaData, parseTitle, -- descriptive Elements
       parseRect, parseCircle, parseEllipse, parseLine, parsePolyLine, parsePolygon, parsePath, -- shape elements
       parseG, parseDefs, parseStyle, parseSymbol, parseUse, -- structural elements
-      parseClipPath, parseImage, parseSwitch, parseText, parsePattern]
+      parseClipPath, parseImage, parseSwitch, parseText, parsePattern, parsePerspective]
 
 ---------------------------------------------------------------------------
 -- | Parse \<defs\>, see <http://www.w3.org/TR/SVG/struct.html#DefsElement>
@@ -407,6 +407,27 @@ test = "{http://www.w3.org/1999/02/22-rdf-syntax-ns#}RDF"
 
 parseSodipodi = tagName "{http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd}namedview" namedViewAttrs
    $ \(pc,bc,bo,ot,gt,gut,po,ps,ww,wh,id1,sg,zoom,cx,cy,wx,wy,wm,cl) ->
+   do c <- parseGrid
+      return $ Leaf (Just "") Nothing mempty mempty
+
+--    <inkscape:grid
+--       type="xygrid"
+--       id="grid5177" />
+parseGrid = tagName "{http://www.inkscape.org/namespaces/inkscape}grid" ignoreAttrs
+   $ \_ ->
+   do c <- content
+      return $ Leaf Nothing Nothing mempty mempty
+
+{-   <inkscape:perspective
+       sodipodi:type="inkscape:persp3d"
+       inkscape:vp_x="0 : 212.5 : 1"
+       inkscape:vp_y="0 : 1000 : 0"
+       inkscape:vp_z="428.75 : 212.5 : 1"
+       inkscape:persp3d-origin="214.375 : 141.66667 : 1"
+       id="perspective5175" />
+-}
+parsePerspective = tagName "{http://www.inkscape.org/namespaces/inkscape}perspective" perspectiveAttrs
+   $ \(typ,vp_x,vp_y,vp_z,persp3d_origin,id_) ->
    do return $ Leaf (Just "") Nothing mempty mempty
 
 -----------------------------------------------------------------------------------
@@ -532,7 +553,18 @@ parseImage = tagName "image" imageAttrs $
 parseText :: MonadThrow m => Consumer Event m (Maybe Tag)
 parseText = tagName "text" textAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,la,x,y,dx,dy,rot,textlen) ->
-  do return $ Leaf (id1 ca) (clipPath pa) mempty mempty
+  do t <- orE contentMaybe parseTSpan
+     return $ Leaf (id1 ca) (clipPath pa) mempty mempty
+
+{-<tspan
+         sodipodi:role="line"
+         id="tspan2173"
+         x="1551.4218"
+         y="1056.9836" /> -}
+
+parseTSpan = tagName "tspan" tspanAttrs $
+   \(role,id_,x,y) ->
+   do return ""
 
 --------------------------------------------------------------------------------------
 -- sceletons

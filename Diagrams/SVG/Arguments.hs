@@ -32,7 +32,9 @@ module Diagrams.SVG.Arguments
     , imageAttrs
     , filterAttrs
     , textAttrs
+    , tspanAttrs
     , namedViewAttrs
+    , perspectiveAttrs
     -- * Filter Effect Attributes
     , feBlendAttrs
     , feColorMatrixAttrs
@@ -348,9 +350,14 @@ textAttrs =
      return $ (\[class_,style,ext,tr,la,x,y,dx,dy,rot,textlen] -> 
                (cpa,ca,gea,pa,class_,style,ext,tr,la,x,y,dx,dy,rot,textlen) ) l
 
+tspanAttrs =
+  do p <- mapM optionalAttr
+      [ "{http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd}role", "id", "x", "y" ]
+     ignoreAttrs
+     return $ ( \[role,id_,x,y] -> (role,id_,x,y) ) p
+
 namedViewAttrs =
-  do 
-     l <- mapM optionalAttr
+  do l <- mapM optionalAttr
       ["pagecolor","bordercolor","borderopacity","objecttolerance","gridtolerance",
        "guidetolerance", "id","showgrid"]
      inkscape <- mapM optionalAttr
@@ -363,6 +370,26 @@ namedViewAttrs =
      ignoreAttrs
      return $ (\[pc,bc,bo,ot,gt,gut,id1,sg] [po,ps,ww,wh,zoom,cx,cy,wx,wy,wm,cl]->
                 (pc,bc,bo,ot,gt,gut,po,ps,ww,wh,id1,sg,zoom,cx,cy,wx,wy,wm,cl) ) l inkscape
+
+{-   <inkscape:perspective
+       sodipodi:type="inkscape:persp3d"
+       inkscape:vp_x="0 : 212.5 : 1"
+       inkscape:vp_y="0 : 1000 : 0"
+       inkscape:vp_z="428.75 : 212.5 : 1"
+       inkscape:persp3d-origin="214.375 : 141.66667 : 1"
+       id="perspective5175" />
+-}
+perspectiveAttrs =
+  do p <- mapM optionalAttr
+       [ "{http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd}type",
+         "{http://www.inkscape.org/namespaces/inkscape}vp_x",
+         "{http://www.inkscape.org/namespaces/inkscape}vp_y",
+         "{http://www.inkscape.org/namespaces/inkscape}vp_z",
+         "{http://www.inkscape.org/namespaces/inkscape}persp3d-origin",
+         "id"]
+     ignoreAttrs
+     return $ (\[typ,vp_x,vp_y,vp_z,persp3d_origin,id_] -> 
+                (typ,vp_x,vp_y,vp_z,persp3d_origin,id_) ) p
 
 -------------------------------------------------------------------------------------------------------------
 
