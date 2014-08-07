@@ -140,69 +140,84 @@ commandsToTrails :: [PathCommand] -> [Path R2]
 commandsToTrails pathCommands = map fst $ foldl' outline [] (splittedCommands pathCommands)
 
 
--- | split list when there is a (M)oveto command (and keep the M)
+-- | split list when there is a Z(closePath) and also when there is a (M)oveto command (keep the M)
 --   and merge repeated lists of single Ms into one M command
-splittedCommands pathCommands = mergeSingleMs $ S.split (S.keepDelimsL (S.whenElt isM)) pathCommands
+splittedCommands pathCommands = concat $ map (S.split (S.keepDelimsR (S.whenElt isZ))) $ -- a path ends with a Z
+                                mergeMs $                                 -- now it is one M
+                                S.split (S.keepDelimsL (S.whenElt isM))   -- a path starts with Ms
+                                pathCommands
   where
     isM (M ar p) = True
     isM _        = False
+    isZ Z = True
+    isZ _ = False
     -- single Ms are a problem, because we would move something empty that we don't remember.
-    mergeSingleMs :: [[PathCommand]] -> [[PathCommand]]
-    mergeSingleMs ( [M Rel (x,y)] : ( ((M Rel (x0,y0)):cs):ds ) ) = mergeSingleMs (((M Rel (x+x0,y+y0)):cs):ds)
-    mergeSingleMs ( [M Rel (x,y)] : ( ((M Abs (x0,y0)):cs):ds ) ) = mergeSingleMs (((M Abs (x0,    y0)):cs):ds)
-    mergeSingleMs ( [M Abs (x,y)] : ( ((M Rel (x0,y0)):cs):ds ) ) = mergeSingleMs (((M Abs (x+x0,y+y0)):cs):ds)
-    mergeSingleMs ( [M Abs (x,y)] : ( ((M Abs (x0,y0)):cs):ds ) ) = mergeSingleMs (((M Abs (x0,    y0)):cs):ds)
-    mergeSingleMs (c:cs) = c : (mergeSingleMs cs)
-    mergeSingleMs [] = []
+    mergeMs :: [[PathCommand]] -> [[PathCommand]]
+    mergeMs ( [M Rel (x,y)] : ( ((M Rel (x0,y0)):cs):ds ) ) = mergeMs (((M Rel (x+x0,y+y0)):cs):ds)
+    mergeMs ( [M Rel (x,y)] : ( ((M Abs (x0,y0)):cs):ds ) ) = mergeMs (((M Abs (x0,    y0)):cs):ds)
+    mergeMs ( [M Abs (x,y)] : ( ((M Rel (x0,y0)):cs):ds ) ) = mergeMs (((M Abs (x+x0,y+y0)):cs):ds)
+    mergeMs ( [M Abs (x,y)] : ( ((M Abs (x0,y0)):cs):ds ) ) = mergeMs (((M Abs (x0,    y0)):cs):ds)
+    mergeMs (c:cs) = c : (mergeMs cs)
+    mergeMs [] = []
 
--- | Take the endpoint of the latest path, append another path that has been generated from the path commands and return this whole path
+data ClosedTrail a = O a | Closed a
+isClosed (Closed _) = True
+isClosed _          = False
+
+getTrail (Closed a) = a
+getTrail (O a)      = a
+
+-- | Take the endpoint of the latest path, append another path that has been generated from the path commands
+-- and return this whole path
 outline :: [(Path R2, (Double, Double))] -> [PathCommand] -> [(Path R2, (Double, Double))]
 outline paths cs = paths ++ [(newPath,newPoint)]
  where
-  newPath = translate (r2 trans) $
+  newPath = translate (r2 (trx,try)) $
             pathFromTrail $
-            wrapTrail $
-            closeLine $
-            mconcat (sel3 concatPaths)
-  newPoint = sel2 concatPaths
+            if isClosed (sel3 concatPaths)
+            then wrapLoop $ closeLine (mconcat (getTrail (sel3 concatPaths)))
+            else wrapLine $            mconcat (getTrail (sel3 concatPaths))
+  newPoint | isClosed (sel3 concatPaths) = (trx, try) -- the endpoint is the old startpoint
+           | otherwise                   = sel2 concatPaths
 
-  concatPaths = foldl' nextSegment ((x, y), (x, y), []) cs
+  concatPaths = foldl' nextSegment ((x,y), (x,y), O []) cs
 
-  traceP (contr,point,path) = Debug.Trace.trace (show point) (contr,point,path)
+--  traceP (contr,point,path) = Debug.Trace.trace (show point) (contr,point,path)
 
-  trans | null cs   = (0,0)
-        | otherwise = sel2 $ nextSegment ((x, y), (x, y), []) (head cs) -- cs usually always starts with a M-command,
-                                                                                  -- because we splitted the commands like that
+  (trx,try) | null cs   = (0,0)
+            | otherwise = sel2 $ nextSegment ((x,y), (x,y), O []) (head cs) -- cs usually always starts with a M-command,
+                                                                            -- because we splitted the commands like that
   (x,y) | null paths = (0,0)
         | otherwise  = snd (last paths)
 
 
 -- | The last control point and end point of the last path are needed to calculate the next line to append
-nextSegment :: ( (X,Y), (X,Y), [Trail' Line R2]) -> PathCommand -> ( (X,Y), (X,Y), [Trail' Line R2])
-nextSegment (controlPoint, startPoint, line) Z = (controlPoint, startPoint, line)
-nextSegment (_, _,       _   ) (M Abs point) = (point, point, [])
-nextSegment (_, (x0,y0), _   ) (M Rel (x,y)) = ((x+x0, y+y0), (x+x0, y+y0), [])
-nextSegment (_, (x0,y0), line) (L Abs (x,y)) = ((x,    y   ), (x,    y   ), line ++ [straight' (x-x0, y-y0)])
-nextSegment (_, (x0,y0), line) (L Rel (x,y)) = ((x+x0, y+y0), (x+x0, y+y0), line ++ [straight' (x,    y   )])
-nextSegment (_, (x0,y0), line) (H Abs x)     = ((x,      y0), (x,      y0), line ++ [straight' (x-x0,    0)])
-nextSegment (_, (x0,y0), line) (H Rel x)     = ((x+x0,   y0), (x+x0,   y0), line ++ [straight' (x,       0)])
-nextSegment (_, (x0,y0), line) (V Abs y)     = ((  x0, y   ), (  x0, y   ), line ++ [straight' (0 ,   y-y0)])
-nextSegment (_, (x0,y0), line) (V Rel y)     = ((  x0, y+y0), (  x0, y+y0), line ++ [straight' (0,    y   )])
+--             endpoint -> (controlPoint, startPoint, line) ->
+nextSegment :: ((X,Y), (X,Y), ClosedTrail [Trail' Line R2]) -> PathCommand -> ( (X,Y), (X,Y), ClosedTrail [Trail' Line R2])
+nextSegment (ctrlPoint, startPoint, O trail) Z  = (ctrlPoint, startPoint, Closed trail)
+nextSegment (_, _,       _      ) (M Abs point) = (point, point, O [])
+nextSegment (_, (x0,y0), _      ) (M Rel (x,y)) = ((x+x0, y+y0), (x+x0, y+y0), O [])
+nextSegment (_, (x0,y0), O trail) (L Abs (x,y)) = ((x,    y   ), (x,    y   ), O $ trail ++ [straight' (x-x0, y-y0)])
+nextSegment (_, (x0,y0), O trail) (L Rel (x,y)) = ((x+x0, y+y0), (x+x0, y+y0), O $ trail ++ [straight' (x,    y   )])
+nextSegment (_, (x0,y0), O trail) (H Abs x)     = ((x,      y0), (x,      y0), O $ trail ++ [straight' (x-x0,    0)])
+nextSegment (_, (x0,y0), O trail) (H Rel x)     = ((x+x0,   y0), (x+x0,   y0), O $ trail ++ [straight' (x,       0)])
+nextSegment (_, (x0,y0), O trail) (V Abs y)     = ((  x0, y   ), (  x0, y   ), O $ trail ++ [straight' (0 ,   y-y0)])
+nextSegment (_, (x0,y0), O trail) (V Rel y)     = ((  x0, y+y0), (  x0, y+y0), O $ trail ++ [straight' (0,    y   )])
 
-nextSegment (_, (x0,y0), line) (C Abs (x1,y1,x2,y2,x,y)) = ((x2,y2), (x,y), line ++ [bez3 (x1-x0, y1-y0) (x2-x0, y2-y0) (x-x0,y-y0)])
-nextSegment (_, (x0,y0), line) (C Rel (x1,y1,x2,y2,x,y)) = ((x2+x0, y2+y0), (x+x0, y+y0), line ++ [bez3 (x1, y1) (x2, y2) (x,y)])
+nextSegment (_, (x0,y0), O trail) (C Abs (x1,y1,x2,y2,x,y)) = ((x2,y2), (x,y), O $ trail ++ [bez3 (x1-x0, y1-y0) (x2-x0, y2-y0) (x-x0,y-y0)])
+nextSegment (_, (x0,y0), O trail) (C Rel (x1,y1,x2,y2,x,y)) = ((x2+x0, y2+y0), (x+x0, y+y0), O $ trail ++ [bez3 (x1, y1) (x2, y2) (x,y)])
 
-nextSegment ((cx,cy),(x0,y0), line) (S Abs (x2,y2,x,y)) = ((x2, y2), (x, y), line ++ [bez3 (x0-cx, y0-cy) (x2-x0, y2-y0) (x-x0, y-y0)])
-nextSegment ((cx,cy),(x0,y0), line) (S Rel (x2,y2,x,y)) = ((x2+x0, y2+y0), (x+x0, y+y0), line ++ [bez3 (x0-cx, y0-cy) (x2, y2) (x, y)])
+nextSegment ((cx,cy),(x0,y0), O trail) (S Abs (x2,y2,x,y)) = ((x2, y2), (x, y), O $ trail ++ [bez3 (x0-cx, y0-cy) (x2-x0, y2-y0) (x-x0, y-y0)])
+nextSegment ((cx,cy),(x0,y0), O trail) (S Rel (x2,y2,x,y)) = ((x2+x0, y2+y0), (x+x0, y+y0), O $ trail ++ [bez3 (x0-cx, y0-cy) (x2, y2) (x, y)])
 
-nextSegment (_, (x0,y0), line) (Q Abs (x1,y1,x,y)) = ((x1, y1),       (x, y), line ++ [bez3 (x1-x0, y1-y0) (x-x0, y-y0) (x-x0, y-y0)])
-nextSegment (_, (x0,y0), line) (Q Rel (x1,y1,x,y)) = ((x1+x0, y1+y0), (x+x0, y+y0), line ++ [bez3 (x1, y1) (x, y) (x, y)])
+nextSegment (_, (x0,y0), O trail) (Q Abs (x1,y1,x,y)) = ((x1, y1),       (x, y), O $ trail ++ [bez3 (x1-x0, y1-y0) (x-x0, y-y0) (x-x0, y-y0)])
+nextSegment (_, (x0,y0), O trail) (Q Rel (x1,y1,x,y)) = ((x1+x0, y1+y0), (x+x0, y+y0), O $ trail ++ [bez3 (x1, y1) (x, y) (x, y)])
 
-nextSegment ((cx,cy), (x0,y0), line) (T Abs (x,y)) = ((2*x0-cx, 2*y0-cy ), (x, y), line ++ [bez3 (x0-cx, y0-cy) (x-x0, y-y0) (x-x0, y-y0)])
-nextSegment ((cx,cy), (x0,y0), line) (T Rel (x,y)) = ((2*x0-cx, 2*y0-cy),  (x, y), line ++ [bez3 (x0-cx, y0-cy) (x, y) (x, y)])
+nextSegment ((cx,cy), (x0,y0), O trail) (T Abs (x,y)) = ((2*x0-cx, 2*y0-cy ), (x, y), O $ trail ++ [bez3 (x0-cx, y0-cy) (x-x0, y-y0) (x-x0, y-y0)])
+nextSegment ((cx,cy), (x0,y0), O trail) (T Rel (x,y)) = ((2*x0-cx, 2*y0-cy),  (x, y), O $ trail ++ [bez3 (x0-cx, y0-cy) (x, y) (x, y)])
 
-nextSegment (_, (x0,y0), line) (A Abs (rx,ry,xAxisRot,fl0,fl1,x,y) ) = (n, n, line ++ [svgArc (rx,ry) xAxisRot fl0 fl1 (x, y)])
-nextSegment (_, (x0,y0), line) (A Rel (rx,ry,xAxisRot,fl0,fl1,x,y) ) = (n, n, line ++ [svgArc (rx,ry) xAxisRot fl0 fl1 (x, y)])
+nextSegment (_, (x0,y0), O trail) (A Abs (rx,ry,xAxisRot,fl0,fl1,x,y) ) = (n, n, O $ trail ++ [svgArc (rx,ry) xAxisRot fl0 fl1 (x, y)])
+nextSegment (_, (x0,y0), O trail) (A Rel (rx,ry,xAxisRot,fl0,fl1,x,y) ) = (n, n, O $ trail ++ [svgArc (rx,ry) xAxisRot fl0 fl1 (x, y)])
 
 n = (0,0)
 
@@ -216,7 +231,7 @@ svgArc :: (Double, Double) -> Double -> Double -> Double -> (Double,Double) -> T
 svgArc (rxx, ryy) xAxisRot largeArcFlag sweepFlag (x2, y2)
      | x2 == 0 && y2 == 0 = emptyLine -- spec F6.2
      | rx == 0 || ry == 0 = straight' (x2,y2) -- spec F6.2
-     | otherwise = arc' rx (theta1 @@ rad) ((theta1 + dtheta21) @@ rad) # scaleY (ry/rx) # rotateBy xAxisRot
+     | otherwise = arc' (-rx) (theta1 @@ rad) ((theta1 + dtheta21) @@ rad) # scaleY (ry/rx) # rotateBy xAxisRot
   where rx | rxx < 0   = -rxx  -- spec F6.2
            | otherwise =  rxx
         ry | ryy < 0   = -ryy  -- spec F6.2
@@ -238,7 +253,9 @@ svgArc (rxx, ryy) xAxisRot largeArcFlag sweepFlag (x2, y2)
             | otherwise =   root * ry * x1' / rx
         cx = (cos xAxisRot) * cx' - (sin xAxisRot) * cy' + ((x1+x2)/2)
         cy = (sin xAxisRot) * cx' + (cos xAxisRot) * cy' + ((y1+y2)/2)
-        angle u v = acos (  (scalar u v) / ( (len u) * (len v) )  )
+        angle u v = (signof u v) * (acos (  (scalar u v) / ( (len u) * (len v) )  ))
+        signof (ux,uy) (vx,vy) | ux * vy - uy * vx > 0 =   1
+                               | otherwise             = - 1
         theta1 = angle (1,0) ((x1'-cx')/rx, (y1'-cy')/ry)
         dtheta = angle ((x1'-cx')/rx, (y1'-cy')/ry)  ((-x1'-cx')/rx, (-y1'-cy')/ry)
         dtheta21 | fs == 0   = if dtheta > 0 then dtheta - (2*pi) else dtheta
