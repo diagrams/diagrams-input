@@ -1,7 +1,7 @@
 svg-diagrams
 ============
 
-Parsing SVG files with xml-conduit and attoparsec
+A SVG parser for diagrams using xml-conduit and attoparsec
 
 
 Issues
