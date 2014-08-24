@@ -3,7 +3,7 @@
 
 --------------------------------------------------------------------
 -- |
--- Module    : Diagrams.SVG.ParseAttributes
+-- Module    : Diagrams.SVG.Attributes
 -- Copyright : (c) 2014 Tillmann Vogt <tillk.vogt@googlemail.com>
 -- License   : BSD3
 --
@@ -27,7 +27,10 @@ module Diagrams.SVG.Attributes
     , parseOne'
     , compose
     , parseDouble
+    , parseMaybeDouble
     , parsePoints
+    , parseTempl
+    , parseIRI
     -- * Transformations
     , applyTr
     , parseTr
@@ -45,6 +48,7 @@ module Diagrams.SVG.Attributes
     , AlignSVG(..)
     , Place(..)
     , MeetOrSlice(..)
+    , SVGStyle(..)
     )
 where
 
@@ -64,11 +68,12 @@ import Diagrams.Segment
 import Diagrams.TwoD.Types
 import Diagrams.Prelude
 import Diagrams.SVG.Path
+import Diagrams.SVG.Tree
 import Text.CSS.Parse
 import qualified Data.HashMap.Strict as H
 import Data.Colour.RGBSpace.HSL (hsl)
 import Data.Word (Word8)
--- import Debug.Trace
+import Debug.Trace
 
 ---------------------------------------------------
 
@@ -158,6 +163,10 @@ compose fs v = Prelude.foldl (flip (.)) id fs $ v
 
 parseDouble :: Text -> Double
 parseDouble l = either (const 0) id (AT.parseOnly AT.double l)
+
+parseMaybeDouble :: Maybe Text -> Double
+parseMaybeDouble l | isJust l = either (const 0) id (AT.parseOnly AT.double (fromJust l))
+                   | otherwise = 0
 
 pp = parseDouble . pack
 
@@ -362,16 +371,16 @@ data PresentationAttributes =
       , writingMode :: Maybe Text
       }
 
--- parsePA :: PresentationAttributes -> [(SVGStyle a)]
-parsePA pa = catMaybes
-             [(parseTempl styleFillVal)             (fill pa),
-              (parseTempl styleFillRuleVal)         (fillRuleSVG pa),
-              (parseTempl styleFillOpacityVal)      (fillOpacity pa),
-              (parseTempl styleStrokeVal)           (strokeSVG pa),
-              (parseTempl styleStrokeWidth)         (strokeWidth pa),
-              (parseTempl styleStrokeLineCapVal)    (strokeLinecap pa),
-              (parseTempl styleStrokeLineJoinVal)   (strokeLinejoin pa),
-              (parseTempl styleStrokeMiterLimitVal) (strokeMiterlimit pa)]
+-- parsePA :: PresentationAttributes -> H.HashMap Text Tag > [(SVGStyle a)]
+parsePA pa grad = catMaybes
+      [(parseTempl (styleFillVal grad))      (fill pa),
+       (parseTempl styleFillRuleVal)         (fillRuleSVG pa),
+       (parseTempl styleFillOpacityVal)      (fillOpacity pa),
+       (parseTempl (styleStrokeVal grad))    (strokeSVG pa),
+       (parseTempl styleStrokeWidth)         (strokeWidth pa),
+       (parseTempl styleStrokeLineCapVal)    (strokeLinecap pa),
+       (parseTempl styleStrokeLineJoinVal)   (strokeLinejoin pa),
+       (parseTempl styleStrokeMiterLimitVal) (strokeMiterlimit pa)]
 
 --------------------------------------------------------------------------------------------
 -- Parse the style attribute, see http://www.w3.org/TR/SVG/painting.html
@@ -379,31 +388,48 @@ parsePA pa = catMaybes
 -- example: style="fill:white;stroke:black;stroke-width:0.503546"
 --------------------------------------------------------------------------------------------
 
-data SVGStyle a = Fill (Colour a)   | FillOpacity Double | FillRule FR
-                | Stroke (Colour a) | StrokeWidth Double | StrokeLineCap LineCap | StrokeLineJoin LineJoin
-                | StrokeMiterLimit Double | StrokeOpacity Double  deriving (Show)
+data SVGStyle a = Fill (Colour a) | FillTex Texture | FillOpacity Double | FillRule FR
+                | Stroke (Colour a) | StrokeTex Texture | StrokeWidth Double | StrokeLineCap LineCap
+                | StrokeLineJoin LineJoin | StrokeMiterLimit Double | StrokeOpacity Double
+                | EmptyStyle
 
 data Unit = EM | EX | PX | IN | CM | MM | PT | PC deriving (Show)
 data FR = Even_Odd | Nonzero | Inherit  deriving (Show)
 
-parseStyles :: (Read a, Floating a, RealFrac a, Ord a) => Maybe Text -> [(SVGStyle a)]
-parseStyles = (either (const []) id) .
-              (AT.parseOnly (separatedBy parseStyleAttr ";")).
-              (fromMaybe empty)
+instance Show (SVGStyle a) where
+  show (Fill c) = "Fill"
+  show (FillTex t) = "Filltex"
+  show (FillOpacity d) = "FillOpacity"
+  show (FillRule r) = "FillRule"
+  show (Stroke s) = "Stroke"
+  show (StrokeTex s) = "StrokeTex"
+  show (StrokeWidth w) = "StrokeWidth"
+  show (StrokeLineCap l) = "StrokeLineCap"
+  show (StrokeLineJoin l) = "StrokeLineJoin"
+  show (StrokeMiterLimit l) = "StrokeMiterLimit"
+  show (StrokeOpacity o) = "StrokeOpacity"
+  show (EmptyStyle) = ""
 
-parseStyleAttr = AT.choice [styleFill, styleFillOpacity, styleFillRule, 
-                            styleStroke, styleStrokeWidth, styleStrokeLineCap, styleStrokeLineJoin,
-                            styleStrokeMiterLimit]
+parseStyles :: (Read a, Floating a, RealFrac a, Ord a) => Maybe Text -> H.HashMap Text Texture -> [(SVGStyle a)]
+parseStyles text grad = either (const []) id $
+                        AT.parseOnly (separatedBy (parseStyleAttr grad) ";") (fromMaybe empty text)
+
+parseStyleAttr grad = AT.choice [styleFill grad, styleFillOpacity, styleFillRule, 
+                                 styleStroke grad, styleStrokeWidth, styleStopColor, styleStopOpacity,
+                                 styleStrokeLineCap, styleStrokeLineJoin, styleStrokeMiterLimit]
 
 -- This function is called on every tag and returns a list of style-attributes to apply (if there is a rule that matches)
 -- TO DO: CSS2 + CSS3 selectors
-cssStylesFromMap :: (Read a, Floating a, RealFrac a, Ord a) => H.HashMap Text [(Text, Text)] -> Text -> Maybe Text -> Maybe Text -> [(SVGStyle a)]
-cssStylesFromMap hmap tagName id_ class_ = parseStyles ( Just ( T.concat ( map f attributes ) ) )
+cssStylesFromMap :: (Read a, Floating a, RealFrac a, Ord a) =>
+                    H.HashMap Text [(Text, Text)] ->
+                    H.HashMap Text Texture ->
+                    Text -> Maybe Text ->  Maybe Text -> [(SVGStyle a)]
+cssStylesFromMap css grad tagName id_ class_ = parseStyles ( Just ( T.concat ( map f attributes ) ) ) grad
   where f (attr, val) = (attr `snoc` ':') `append` (val `snoc` ';')
-        styleFromClass cl = [H.lookup ('.' `cons` cl) hmap] ++ [H.lookup (tagName `append` ('.' `cons` cl)) hmap]
+        styleFromClass cl = [H.lookup ('.' `cons` cl) css] ++ [H.lookup (tagName `append` ('.' `cons` cl)) css]
         attributes = concat $ catMaybes
-                   ( [H.lookup "*" hmap] ++    -- apply this style to every element
-                     (if isJust id_ then [H.lookup ('#' `cons` (fromJust id_)) hmap] else []) ++
+                   ( [H.lookup "*" css] ++    -- apply this style to every element
+                     (if isJust id_ then [H.lookup ('#' `cons` (fromJust id_)) css] else []) ++
                      (concat (map styleFromClass (if isJust class_ then T.words $ fromJust class_ else [])))
                    )
 
@@ -431,15 +457,20 @@ absoluteOrRelativeIRI =
 
 fragment x = fromMaybe T.empty $ fmap snd (parseTempl parseIRI x) -- look only for the text after "#"
 
-applyStyleSVG styles hmap = compose (map getStyles (styles hmap))
+applyStyleSVG stylesFromMap hmap = compose (map getStyles (stylesFromMap hmap))
 
-getStyles (Fill x) = fc x
+stops = mkStops [(gray, 0, 1), (white, 0.5, 1), (purple, 1, 1)]
+gradient = mkLinearGradient stops ((-0.5) ^& 0) (0.5 ^& 0) GradPad
+
+getStyles (Fill c) = fc c
+getStyles (FillTex x) = fillTexture x
 getStyles (FillOpacity d) = id -- we currently don't differentiate between fill opacity and stroke opacity
 getStyles (FillRule Even_Odd) = fillRule EvenOdd
 getStyles (FillRule Nonzero) = id
 getStyles (FillRule Inherit) = id
 
 getStyles (Stroke x) = lc x
+getStyles (StrokeTex x) = id -- strokeTexture x
 getStyles (StrokeWidth x) = lwL x
 getStyles (StrokeLineCap x) = lineCap x
 getStyles (StrokeLineJoin x) = lineJoin x
@@ -447,14 +478,23 @@ getStyles (StrokeMiterLimit x) = id
 getStyles (StrokeOpacity x) = id -- we currently don't differentiate between fill opacity and stroke opacity
 
 -- example: style="fill:#ffb13b" style="fill:red"
-styleFill =
+styleFill hmap =
   do AT.skipSpace
      AT.string "fill:"
-     styleFillVal
+     styleFillVal hmap
 
-styleFillVal =
+styleFillVal gradients = AT.choice [ styleFillColourVal, styleFillTexURL gradients ]
+
+styleFillColourVal =
   do c <- AT.choice [colorRRGGBB, colorRGB, colorString, colorHSL, colorNone]
      return (Fill c)
+
+styleFillTexURL gradients =
+  do (absrel,fragment) <- parseIRI
+     let t = H.lookup fragment gradients
+     -- Debug.Trace.trace (show (H.lookup fragment hmap)) $
+     if isJust t then return (FillTex (fromJust t))
+                 else return EmptyStyle
 
 -- example: style="fill-rule:evenodd"
 styleFillRule =
@@ -479,14 +519,22 @@ styleFillOpacityVal =
      return (FillOpacity o)
 
 -- example: style="stroke:black"
-styleStroke =
+styleStroke hmap =
   do AT.skipSpace
      AT.string "stroke:"
-     styleStrokeVal
+     styleStrokeVal hmap
 
-styleStrokeVal =
+styleStrokeVal gradients = AT.choice [ styleStrokeColourVal, styleStrokeTexURL gradients ]
+
+styleStrokeColourVal =
   do c <- AT.choice [colorRRGGBB, colorRGB, colorString, colorHSL, colorNone]
      return (Stroke c)
+
+styleStrokeTexURL gradients =
+  do (absrel,fragment) <- parseIRI
+     let t = H.lookup fragment gradients
+     if isJust t then return (StrokeTex (fromJust t))
+                 else return EmptyStyle
 
 -- example: style="stroke-width:0.503546"
 styleStrokeWidth =
@@ -576,11 +624,23 @@ styleStrokeOpacity =
   do AT.skipSpace
      AT.string "stroke-opacity:"
      AT.skipSpace
-     styleStrokeOpacityVal
+     styleOpacityVal
 
-styleStrokeOpacityVal =
+styleOpacityVal =
   do l <- double
-     return (StrokeOpacity l)
+     return (FillOpacity l)
+
+styleStopColor =
+  do AT.skipSpace
+     AT.string "stop-color:"
+     AT.skipSpace
+     styleFillColourVal
+
+styleStopOpacity =
+  do AT.skipSpace
+     AT.string "stop-opacity:"
+     AT.skipSpace
+     styleOpacityVal
 
 -- To Do: Visibility, marker
 
@@ -631,6 +691,7 @@ colorHSL =
 colorNone =
   do AT.string "none"
      return (sRGB24 0 0 0)
+
 
 -------------------------------------------------------------------------------------
 -- Parsing preserve aspect ratio

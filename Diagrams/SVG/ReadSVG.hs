@@ -26,13 +26,9 @@ module Diagrams.SVG.ReadSVG
     , readSVGFile
     , preserveAspectRatio
     , nodes
-    , insertRefsStyles
+    , insertRefs
     , clipByRef
     , evalPath
-    -- * Tree Structure
-    , Tag(..)
-    , Id(..)
-    , ClipRef(..)
     -- * Parsing of basic structure tags
     , parseSVG
     , parseG
@@ -51,6 +47,11 @@ module Diagrams.SVG.ReadSVG
     , parsePolyLine
     , parsePolygon
     , parsePath
+    -- * Parsing of Gradient tags
+    , parseLinearGradient
+    , parseRadialGradient
+    , parseSet
+    , parseStop
     -- * Parsing of other tags
     , parseClipPath
     , parsePattern
@@ -64,7 +65,7 @@ import Control.Monad.Trans.Resource
 import Data.Conduit
 --import qualified Data.Conduit.List as C
 import qualified Data.HashMap.Strict as H
-import Data.Maybe (fromJust, catMaybes, fromMaybe, isJust)
+import Data.Maybe (fromJust, fromMaybe, isJust)
 import qualified Data.Text as T
 import Data.Text(Text(..))
 import Data.Text.Encoding
@@ -75,12 +76,14 @@ import Diagrams.TwoD.Ellipse
 import Diagrams.TwoD.Size
 import Diagrams.TwoD.Types
 import Diagrams.SVG.Arguments
-import Diagrams.SVG.Attributes (applyTr, parseTr, applyStyleSVG, parseStyles, parseDouble, parsePoints, parsePA, CoreAttributes(..), ConditionalProcessingAttributes(..), DocumentEventAttributes(..), GraphicalEventAttributes(..), PresentationAttributes(..), XlinkAttributes(..), FilterPrimitiveAttributes(..), NameSpaces(..), PreserveAR(..), AlignSVG(..), Place(..), MeetOrSlice(..), p, fragment, cssStylesFromMap)
+import Diagrams.SVG.Attributes (applyTr, parseTr, applyStyleSVG, parseStyles, parseDouble, parseMaybeDouble, parsePoints, parsePA, CoreAttributes(..), ConditionalProcessingAttributes(..), DocumentEventAttributes(..), GraphicalEventAttributes(..), PresentationAttributes(..), XlinkAttributes(..), FilterPrimitiveAttributes(..), NameSpaces(..), PreserveAR(..), AlignSVG(..), Place(..), MeetOrSlice(..), SVGStyle(..), p, cssStylesFromMap, parseTempl, parseIRI)
 import Diagrams.SVG.Path (commands, commandsToTrails, PathCommand(..))
+import Diagrams.SVG.Tree 
 import Filesystem.Path (FilePath)
 import Text.XML.Stream.Parse hiding (parseText)
 import Text.CSS.Parse (parseBlocks)
 import Prelude hiding (FilePath)
+import Data.Tuple.Select
 import Debug.Trace
 
 --------------------------------------------------------------------------------------
@@ -109,11 +112,12 @@ readSVGFile :: PreserveAR -> Width -> Height -> FilePath -> IO (Diagram B R2)
 readSVGFile preserveAR width height fp =
   do tree <- runResourceT $ parseFile def fp $$ force "svg tag required" parseSVG 
               -- (C.map stripNamespace parseSVG)
-     let ns = -- Debug.Trace.trace ("tree" ++ show  tree ++ "\n") $
-              nodes tree
-     let css = Debug.Trace.trace ("tree" ++ show (cssStyle tree) ++ "\n") $ H.fromList $ cssStyle tree
-     let hashmap = H.fromList ns -- needed because of the use-tag and clipPath
-     let image = (scaleY (-1)) (insertRefsStyles hashmap css tree) -- insert references from hashmap into tree
+     let (ns,css,grad) = -- Debug.Trace.trace ("tree" ++ show (nodes tree) ++ "\n") $
+                         nodes ([],[],[]) tree
+     let nmap    = H.fromList ns -- needed because of the use-tag and clipPath
+     let cssmap  = H.fromList css -- CSS inside the <defs> tag
+     let gradmap = H.fromList $ map (\(id1,f) -> (id1, f cssmap)) grad
+     let image = (scaleY (-1)) (insertRefs (nmap,cssmap,gradmap) tree) -- insert references from hashmaps into tree
      return (preserveAspectRatio width height preserveAR image)
 
 type Width = Double
@@ -134,87 +138,26 @@ preserveAspectRatio newWidth newHeight (PAR alignXY Meet) image
         xPlace (AlignXY x y) i = i # scale scaX # alignBL # translateX ((newWidth  - w*scaX)*x) -- # showOrigin
         yPlace (AlignXY x y) i = i # scale scaY # alignBL # translateY ((newHeight - h*scaY)*y) -- # showOrigin
 
--------------------------------------------------------------------------------------
--- | A tree structure is needed to handle refences to parts of the tree itself. The \<defs\>-section contains shapes that can be refered to, but the SVG standard allows to refer to every tag in the SVG-file.
--- 
-data Tag = Leaf Id ClipRef (Path R2) (H.HashMap Text Attrs -> Diagram B R2)-- ^A leaf consists of
---
--- * An Id
---
--- * Maybe a reference to a clipPath to clip this leaf
---
--- * A path so that this leaf can be used to clip some other part of a tree
---
--- * A diagram (Another option would have been to apply a function to the upper path)
-      | Reference Id Id ClipRef (H.HashMap Text Attrs -> Diagram B R2 -> Diagram B R2) -- ^ A reference (\<use\>-tag) consists of:
---
--- * An Id
---
--- * A reference to an Id
---
--- * Maybe a clipPath
---
--- * Transformations applied to the reference
-      | SubTree Bool Id ClipRef (H.HashMap Text Attrs -> Diagram B R2 -> Diagram B R2) [Tag]-- ^ A subtree consists of:
---
--- * A Bool: Are we in a section that will be rendered directly (not in a \<defs\>-section)
---
--- * An Id of subdiagram
---
--- * Maybe a clipPath
---
--- * A transformation or application of a style to a subdiagram
---
--- * A list of subtrees
-      | StyleTag [(Text, [(Text, Text)])]
---
--- * A tag that contains CSS styles with selectors and attributes
+------------------------------------------------------------------------------------------------------------
 
-type Id      = Maybe Text
-type ClipRef = Maybe Text
-type Attrs = [(Text, Text)]
-
-instance Show Tag where
-  show (Leaf id1 clip path diagram)  = "Leaf "      ++ (show id1) ++ (show clip) ++ (show path) ++ "\n"
-  show (Reference selfid id1 clip f) = "Reference " ++ (show id1) ++ (show clip) ++ "\n"
-  show (SubTree b id1 clip f tree)   = "Sub "       ++ (show id1) ++ (show clip) ++ concat (map show tree) ++ "\n"
-
-----------------------------------------------------------------------------------
--- | Put every subtree or leaf that has an id into a list of references to them
-nodes :: Tag -> [(Text, Tag)]
-nodes (Leaf id1 clipref path diagram)  | isJust id1 = [(fromJust id1, Leaf id1 clipref path diagram)]
-                                       | otherwise  = []
-nodes (Reference selfId id1 clipref f) = []
-nodes (SubTree b id1 clipref f children)
-     | isJust id1 = [(fromJust id1, SubTree b id1 clipref f children)] ++ (concat (map nodes children))
-     | otherwise  =                                                       (concat (map nodes children))
-nodes (StyleTag _) = []
-
-cssStyle :: Tag -> [(Text, Attrs)]
-cssStyle (SubTree b id1 clipref f children) = concat $ map cssStyle children
-cssStyle (StyleTag styles) = styles
-cssStyle _ = []
-
-getId :: Tag -> Id
-getId (Leaf      id1 clipref path diagram) = id1
-getId (Reference id1 ref clipref f)        = id1
-getId (SubTree     b id1 clipref f children)   = id1
-
+evalGrad cssmap (Grad id1 tex) = (id1, tex cssmap)
 
 -- lookup a diagram
 lookUp hmap i | isJust l  = fromJust l
               | otherwise = Leaf Nothing Nothing mempty mempty -- an empty diagram if we can't find the id
   where l = H.lookup i hmap
 
-insertRefsStyles :: H.HashMap Text Tag -> H.HashMap Text Attrs -> Tag -> Diagram B R2
-insertRefsStyles hmap css (Leaf             id1 clipRef path diagram) = diagram css # clipByRef hmap clipRef
-insertRefsStyles hmap css (Reference selfId id1 clipRef f)            = -- Debug.Trace.trace (show (lookUp hmap (fragment id1))) $
-    (f css) $ insertRefsStyles hmap css (lookUp hmap (fragment id1)) # clipByRef hmap clipRef
+insertRefs :: (H.HashMap Text Tag, H.HashMap Text Attrs, H.HashMap Text Texture) -> Tag -> Diagram B R2
+insertRefs maps (Leaf id1 clipRef path f) = f maps # clipByRef (sel1 maps) clipRef
+insertRefs maps (Grad _ _) = mempty
+insertRefs maps (Stop f)   = mempty
+insertRefs maps (Reference selfId id1 clipRef f) = (f maps) $ insertRefs maps (lookUp (sel1 maps) (fragment id1))
+                                                    # clipByRef (sel1 maps) clipRef
 
-insertRefsStyles hmap css (SubTree True id1     clipRef f children)   =
-    (f css) (mconcat (map (insertRefsStyles hmap css) children))     # clipByRef hmap clipRef
+insertRefs maps (SubTree True id1 clipRef f children) = (f maps) (mconcat (map (insertRefs maps) children))
+                                                         # clipByRef (sel1 maps) clipRef
 
-insertRefsStyles hmap css (SubTree False _ _ _ _)                     = mempty
+insertRefs maps (SubTree False _ _ _ _) = mempty
 
 clipByRef hmap ref | isJust l  = -- Debug.Trace.trace (show $ evalPath hmap (fromJust l)) $
                                  clipBy $ evalPath hmap (fromJust l)
@@ -226,6 +169,9 @@ evalPath :: H.HashMap Text Tag -> Tag -> Path R2
 evalPath hmap (Leaf             id1 clipRef path diagram)   = path
 evalPath hmap (Reference selfId id1 clipRef f)              = evalPath hmap (lookUp hmap (fragment id1))
 evalPath hmap (SubTree _            id1 clipRef f children) = mconcat (map (evalPath hmap) children)
+evalPath hmap _ = mempty
+
+fragment x = fromMaybe T.empty $ fmap snd (parseTempl parseIRI x) -- look only for the text after "#"
 
 -------------------------------------------------------------------------------------
 -- Basic SVG structure
@@ -235,17 +181,19 @@ parseSVG :: MonadThrow m => Sink Event m (Maybe Tag)
 parseSVG = tagName "svg" svgAttrs $
    \(cpa,ca,gea,pa,class_,style,ext,x,y,w,h,view,ar,zp,ver,baseprof,cScripT,cStyleT,xmlns,xml) ->
    do gs <- many svgContent
-      let st hmap = (parseStyles style) ++ (parsePA pa) ++ (cssStylesFromMap hmap "svg" (id1 ca) class_)
+      let st (ns,css,grad) = (parseStyles style grad) ++
+                             (parsePA     pa    grad) ++
+                             (cssStylesFromMap css grad "svg" (id1 ca) class_)
       return $ SubTree True (id1 ca)
                             (clipPath pa)
                             (applyStyleSVG st)
                             (reverse gs)
 
-svgContent = choose
-     [parseDesc, parseMetaData, parseTitle, -- descriptive Elements
-      parseRect, parseCircle, parseEllipse, parseLine, parsePolyLine, parsePolygon, parsePath, -- shape elements
+svgContent = choose -- the likely most common are checked first
+     [parsePath, parseRect, parseCircle, parseEllipse, parseLine, parsePolyLine, parsePolygon, -- shape elements
       parseG, parseDefs, parseSymbol, parseUse, -- structural elements
-      parseClipPath, parseImage, parseSwitch, parseText, parsePattern, parseSodipodi]
+      parseClipPath, parseText, parsePattern, parseImage, parseSwitch, parseSodipodi,
+      parseDesc, parseMetaData, parseTitle] -- descriptive Elements
 
 ---------------------------------------------------------------------------
 -- | Parse \<g\>, see <http://www.w3.org/TR/SVG/struct.html#GElement>
@@ -253,16 +201,19 @@ parseG :: MonadThrow m => Consumer Event m (Maybe Tag)
 parseG = tagName "g" gAttrs
    $ \(cpa,ca,gea,pa,class_,style,ext,tr) ->
    do insideGs <- many gContent
-      let st hmap = (parseStyles style) ++ (parsePA pa) ++ (cssStylesFromMap hmap "g" (id1 ca) class_)
+      let st (ns,css,grad) = (parseStyles style grad) ++
+                             (parsePA     pa    grad) ++
+                             (cssStylesFromMap css grad "g" (id1 ca) class_)
       return $ SubTree True (id1 ca)
                             (clipPath pa)
                             ( (applyTr (parseTr tr)) . (applyStyleSVG st) )
                             (reverse insideGs)
 
-gContent = choose [parseDesc, parseMetaData, parseTitle, -- descriptive Elements
-      parseRect, parseCircle, parseEllipse, parseLine, parsePolyLine, parsePolygon, parsePath, -- shape elements
+gContent = choose -- the likely most common are checked first
+     [parsePath, parseRect, parseCircle, parseEllipse, parseLine, parsePolyLine, parsePolygon, -- shape elements
       parseG, parseDefs, parseStyle, parseSymbol, parseUse, -- structural elements
-      parseClipPath, parseImage, parseSwitch, parseText, parsePattern, parsePerspective]
+      parseLinearGradient, parseRadialGradient, parseClipPath, parseImage, parseText, parsePattern, parseSwitch, parsePerspective,
+      parseDesc, parseMetaData, parseTitle] -- descriptive Elements
 
 ---------------------------------------------------------------------------
 -- | Parse \<defs\>, see <http://www.w3.org/TR/SVG/struct.html#DefsElement>
@@ -270,7 +221,9 @@ parseDefs :: MonadThrow m => Consumer Event m (Maybe Tag)
 parseDefs = tagName "defs" gAttrs $
    \(cpa,ca,gea,pa,class_,style,ext,tr) ->
    do insideDefs <- many gContent
-      let st hmap = (parseStyles style) ++ (parsePA pa) ++ (cssStylesFromMap hmap "defs" (id1 ca) class_)
+      let st (ns,css,grad) = (parseStyles style grad) ++
+                             (parsePA     pa    grad) ++
+                             (cssStylesFromMap css grad "defs" (id1 ca) class_)
       return $ SubTree False (id1 ca)
                              (clipPath pa)
                              ( (applyTr (parseTr tr)) . (applyStyleSVG st) )
@@ -302,7 +255,9 @@ parseSymbol :: MonadThrow m => Consumer Event m (Maybe Tag)
 parseSymbol = tagName "symbol" symbolAttrs $
    \(ca,gea,pa,class_,style,ext,ar,viewbox) ->
    do insideSym <- many symbolContent
-      let st hmap = (parseStyles style) ++ (parsePA pa) ++ (cssStylesFromMap hmap "symbol" (id1 ca) class_)
+      let st (ns,css,grad) = (parseStyles style grad) ++
+                             (parsePA     pa    grad) ++
+                             (cssStylesFromMap css grad "symbol" (id1 ca) class_)
       return $ SubTree False (id1 ca)
                              (clipPath pa)
                              (applyStyleSVG st)
@@ -315,7 +270,9 @@ symbolContent = choose [ parsePath ]
 parseUse = tagName "use" useAttrs
    $ \(ca,cpa,gea,pa,xlink,class_,style,ext,tr,x,y,w,h) ->
    do insideUse <- many useContent
-      let st hmap = (parseStyles style) ++ (parsePA pa) ++ (cssStylesFromMap hmap "use" (id1 ca) class_)
+      let st (nss,css,grad) = (parseStyles style grad) ++
+                              (parsePA     pa    grad) ++
+                              (cssStylesFromMap css grad "use" (id1 ca) class_)
       return $ Reference (id1 ca) (xlinkHref xlink) (clipPath pa)
                          ( (translate (r2 (p x, p y))) . (applyTr (parseTr tr)) . (applyStyleSVG st) )
 
@@ -328,7 +285,7 @@ parseSwitch = tagName "switch" switchAttrs
    do insideSwitch <- many switchContent
       return $ Leaf (id1 ca) (clipPath pa) mempty mempty
 
-switchContent = choose [parseRect, parseCircle, parseEllipse, parseLine, parsePolyLine, parsePolygon, parsePath]
+switchContent = choose [parsePath, parseRect, parseCircle, parseEllipse, parseLine, parsePolyLine, parsePolygon]
 
 ----------------------------------------------------------------------------------------
 -- descriptive elements
@@ -435,13 +392,17 @@ parsePerspective = tagName "{http://www.inkscape.org/namespaces/inkscape}perspec
 parseRect :: MonadThrow m => Consumer Event m (Maybe Tag)
 parseRect = tagName "rect" rectAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,ar,tr,x,y,w,h,rx,ry) -> do
-    let st hmap = (parseStyles style) ++ (parsePA pa) ++ (cssStylesFromMap hmap "rect" (id1 ca) class_)
+    let st (ns,css,grad) = (parseStyles style grad) ++
+                           (parsePA     pa    grad) ++
+                           (cssStylesFromMap css grad "rect" (id1 ca) class_)
     return $ Leaf (id1 ca)
                   (clipPath pa)
                   (path x y w h rx ry tr)
-                  (\hmap -> (path x y w h rx ry tr # stroke # lwL 0 # applyStyleSVG st hmap))
+                  (\maps -> (path x y w h rx ry tr # stroke # lwL 0 # applyStyleSVG st maps))
 
-  where path x y w h rx ry tr = (rRect (p w) (p h) (p rx) (p ry)) # alignBL # applyTr (parseTr tr) # translate (r2 (p x, p y))
+  where path x y w h rx ry tr = (rRect (p w) (p h) (p rx) (p ry)) # alignBL 
+                                                                  # applyTr (parseTr tr)
+                                                                  # translate (r2 (p x, p y))
         rRect pw ph prx pry | prx == 0 && pry == 0 = rect pw ph :: Path R2
                             | otherwise = roundedRect pw ph (if prx == 0 then pry else prx) :: Path R2
 
@@ -450,11 +411,13 @@ parseRect = tagName "rect" rectAttrs $
 parseCircle :: MonadThrow m => Consumer Event m (Maybe Tag)
 parseCircle = tagName "circle" circleAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,r,cx,cy) -> do
-    let st hmap = (parseStyles style) ++ (parsePA pa) ++ (cssStylesFromMap hmap "circle" (id1 ca) class_)
+    let st (ns,css,grad) = (parseStyles style grad) ++
+                           (parsePA     pa    grad) ++
+                           (cssStylesFromMap css grad "circle" (id1 ca) class_)
     return $ Leaf (id1 ca)
                   (clipPath pa)
                   (path cx cy r tr)
-                  (\hmap -> (path cx cy r tr # stroke # lwL 0 # applyStyleSVG st hmap))
+                  (\maps -> (path cx cy r tr # stroke # lwL 0 # applyStyleSVG st maps))
 
   where path cx cy r tr = circle (p r) # applyTr (parseTr tr) # translate (r2 (p cx, p cy))
 
@@ -463,11 +426,13 @@ parseCircle = tagName "circle" circleAttrs $
 parseEllipse :: MonadThrow m => Consumer Event m (Maybe Tag)
 parseEllipse = tagName "ellipse" ellipseAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,rx,ry,cx,cy) -> do
-    let st hmap = (parseStyles style) ++ (parsePA pa) ++ (cssStylesFromMap hmap "ellipse" (id1 ca) class_)
+    let st (ns,css,grad) = (parseStyles style grad) ++
+                           (parsePA     pa    grad) ++
+                           (cssStylesFromMap css grad "ellipse" (id1 ca) class_)
     return $ Leaf (id1 ca)
                   (clipPath pa)
                   (path cx cy rx ry tr)
-                  (\hmap -> (path cx cy rx ry tr # stroke # lwL 0 # applyStyleSVG st hmap))
+                  (\maps -> (path cx cy rx ry tr # stroke # lwL 0 # applyStyleSVG st maps))
 
   where path cx cy rx ry tr = ellipseXY (p rx) (p ry) # applyTr (parseTr tr) # translate (r2 (p cx, p cy))
 
@@ -476,11 +441,13 @@ parseEllipse = tagName "ellipse" ellipseAttrs $
 parseLine :: MonadThrow m => Consumer Event m (Maybe Tag)
 parseLine = tagName "line" lineAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,x1,y1,x2,y2) -> do
-    let st hmap = (parseStyles style) ++ (parsePA pa) ++ (cssStylesFromMap hmap "line" (id1 ca) class_)
+    let st (ns,css,grad) = (parseStyles style grad) ++
+                           (parsePA     pa    grad) ++
+                           (cssStylesFromMap css grad "line" (id1 ca) class_)
     return $ Leaf (id1 ca)
                   (clipPath pa)
                   (path x1 y1 x2 y2 tr)
-                  (\hmap -> (path x1 y1 x2 y2 tr # stroke # applyStyleSVG st hmap))
+                  (\maps -> (path x1 y1 x2 y2 tr # stroke # applyStyleSVG st maps))
 
   where path x1 y1 x2 y2 tr =
                fromSegments [ straight (r2 ((p x2) - (p x1), (p y2) - (p y1))) ]
@@ -492,41 +459,56 @@ parseLine = tagName "line" lineAttrs $
 parsePolyLine :: MonadThrow m => Consumer Event m (Maybe Tag)
 parsePolyLine = tagName "polyline" polygonAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,points) -> do
-    let st hmap = (parseStyles style) ++ (parsePA pa) ++ (cssStylesFromMap hmap "polyline" (id1 ca) class_)
+    let st (ns,css,grad) = (parseStyles style grad) ++
+                           (parsePA     pa    grad) ++
+                           (cssStylesFromMap css grad "polyline" (id1 ca) class_)
     let ps = parsePoints (fromJust points)
     return $ Leaf (id1 ca)
                   (clipPath pa)
                   (path ps tr)
-                  (\hmap -> (dia  ps tr # lwL 0 # applyStyleSVG st hmap))
+                  (\maps -> (dia  ps tr # lwL 0 # applyStyleSVG st maps))
 
-  where path ps tr = fromVertices (map p2 ps)              # applyTr (parseTr tr) # translate (r2 (head ps))
-        dia  ps tr = fromVertices (map p2 ps) # strokeLine # applyTr (parseTr tr) # translate (r2 (head ps))
+  where path ps tr = fromVertices (map p2 ps) # applyTr (parseTr tr)
+                                              # translate (r2 (head ps))
+
+        dia  ps tr = fromVertices (map p2 ps) # strokeLine
+                                              # applyTr (parseTr tr)
+                                              # translate (r2 (head ps))
 
 --------------------------------------------------------------------------------------------------
 -- | Parse \<polygon\>,  see <http://www.w3.org/TR/SVG11/shapes.html#PolygonElement>
 parsePolygon :: MonadThrow m => Consumer Event m (Maybe Tag)
 parsePolygon = tagName "polygon" polygonAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,points) -> do
-    let st hmap = (parseStyles style) ++ (parsePA pa) ++ (cssStylesFromMap hmap "polygon" (id1 ca) class_)
+    let st (ns,css,grad) = (parseStyles style grad) ++
+                           (parsePA     pa    grad) ++
+                           (cssStylesFromMap css grad "polygon" (id1 ca) class_)
     let ps = parsePoints (fromJust points)
     return $ Leaf (id1 ca)
                   (clipPath pa)
                   (path  ps tr)
-                  (\hmap -> (dia   ps tr # lwL 0 # applyStyleSVG st hmap))
+                  (\maps -> (dia   ps tr # lwL 0 # applyStyleSVG st maps))
 
-  where path ps tr = fromVertices (map p2 ps)                          # applyTr (parseTr tr) # translate (r2 (head ps))
-        dia  ps tr = fromVertices (map p2 ps) # closeLine # strokeLoop # applyTr (parseTr tr) # translate (r2 (head ps))
+  where path ps tr = fromVertices (map p2 ps) # applyTr (parseTr tr)
+                                              # translate (r2 (head ps))
+
+        dia  ps tr = fromVertices (map p2 ps) # closeLine
+                                              # strokeLoop
+                                              # applyTr (parseTr tr)
+                                              # translate (r2 (head ps))
 
 --------------------------------------------------------------------------------------------------
 -- | Parse \<path\>,  see <http://www.w3.org/TR/SVG11/paths.html#PathElement>
 parsePath :: MonadThrow m => Consumer Event m (Maybe Tag)
 parsePath = tagName "path" pathAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,d,pathLength) -> do
-    let st hmap = (parseStyles style) ++ (parsePA pa) ++ (cssStylesFromMap hmap "path" (id1 ca) class_)
+    let st (ns,css,grad) = (parseStyles style grad) ++
+                           (parsePA     pa    grad) ++
+                           (cssStylesFromMap css grad "path" (id1 ca) class_)
     return $ Leaf (id1 ca)
                   (clipPath pa)
                   (path d tr)
-                  (\hmap -> (path d tr # stroke # lwL 0 # applyStyleSVG st hmap))
+                  (\maps -> (path d tr # stroke # lwL 0 # applyStyleSVG st maps))
 
   where path d tr = (mconcat $ commandsToTrails $ commands d) # applyTr (parseTr tr)
 
@@ -536,10 +518,12 @@ parseClipPath :: MonadThrow m => Consumer Event m (Maybe Tag)
 parseClipPath = tagName "clipPath" clipPathAttrs $
   \(cpa,ca,pa,class_,style,ext,ar,viewbox) -> do
     insideClipPath <- many clipPathContent
-    let st hmap = (parseStyles style) ++ (parsePA pa) ++ (cssStylesFromMap hmap "clipPath" (id1 ca) class_)
+    let st (ns,css,grad) = (parseStyles style grad) ++
+                           (parsePA     pa    grad) ++
+                           (cssStylesFromMap css grad "clipPath" (id1 ca) class_)
     return $ SubTree False (id1 ca) (clipPath pa) (applyStyleSVG st) (reverse insideClipPath)
 
-clipPathContent = choose [parseRect, parseCircle, parseEllipse, parseLine, parsePolyLine, parsePolygon, parsePath,
+clipPathContent = choose [parsePath, parseRect, parseCircle, parseEllipse, parseLine, parsePolyLine, parsePolygon,
                           parseText, parseUse]
 
 --------------------------------------------------------------------------------------
@@ -565,6 +549,87 @@ parseText = tagName "text" textAttrs $
 parseTSpan = tagName "tspan" tspanAttrs $
    \(role,id_,x,y) ->
    do return ""
+
+--------------------------------------------------------------------------------------
+-- Gradients
+
+-- > gradient = mkLinearGradient stops ((-0.5) ^& 0) (0.5 ^& 0) GradPad
+-- > sq1 = square 1 # fillTexture  gradient
+
+-- | Parse \<linearGradient\>, see <http://www.w3.org/TR/SVG/pservers.html#LinearGradientElement>
+-- example: <linearGradient id="SVGID_2_" gradientUnits="userSpaceOnUse" x1="68.2461" y1="197.6797"
+--           x2="52.6936" y2="237.5337" gradientTransform="matrix(1 0 0 -1 -22.5352 286.4424)">
+parseLinearGradient :: MonadThrow m => Consumer Event m (Maybe Tag)
+parseLinearGradient = tagName "linearGradient" linearGradAttrs $
+  \(cpa,ca,pa,xlink,class_,style,ext,x1,y1,x2,y2,gradientUnits,gradientTransform,spreadMethod) ->
+  do gs <- many gradientContent
+     let stops :: [CSSMap -> [GradientStop]]
+         stops = map getTexture $ concat $ map extractStops gs
+     -- stops are lists of functions and everyone of these gets passed the same (nodemap,gradmap)
+     -- and puts them into a Grad constructor
+     return $ Grad (id1 ca) (\css -> (mkLinearGradient (concat (map ($ css) stops))
+                                                       ((parseMaybeDouble x1) ^& (parseMaybeDouble y1))
+                                                       ((parseMaybeDouble x2) ^& (parseMaybeDouble y2)) GradPad)  )
+
+gradientContent = choose
+     [parseStop, parseSet,
+      parseDesc, parseMetaData, parseTitle] -- descriptive Elements (rarely used here, so tested at the end)
+
+-- | Parse \<radialGradient\>, see <http://www.w3.org/TR/SVG/pservers.html#RadialGradientElement>
+parseRadialGradient :: MonadThrow m => Consumer Event m (Maybe Tag)
+parseRadialGradient = tagName "radialGradient" radialGradAttrs $
+  \(cpa,ca,pa,xlink,class_,style,ext,cx,cy,r,fx,fy,gradientUnits,gradientTransform,spreadMethod) ->
+  do gs <- many gradientContent
+     let stops = map getTexture $ concat $ map extractStops gs
+     return $ Grad (id1 ca) (\css -> (mkRadialGradient (concat (map ($ css) stops))
+                                                       ((parseMaybeDouble cx) ^& (parseMaybeDouble cy))
+                                                       (parseMaybeDouble r)
+                                                       (0 ^& 0) 0 GradPad)  )
+
+extractStops :: Tag -> [Tag]
+extractStops (SubTree b id1 clipRef f children) = concat (map extractStops children)
+extractStops (Stop stops) = [Stop stops]
+extractStops _ = []
+
+getTexture (Stop stops) = stops
+
+-- | Parse \<set\>, see <http://www.w3.org/TR/SVG/animate.html#SetElement>
+parseSet = tagName "set" setAttrs $
+   \(ca,pa,xlink) ->
+   do return $ Leaf (id1 ca) Nothing mempty mempty -- "set" ignored so far
+
+-- | Parse \<stop\>, see <http://www.w3.org/TR/SVG/pservers.html#StopElement>
+--  e.g. <stop  offset="0.4664" style="stop-color:#000000;stop-opacity:0.8"/>
+parseStop = tagName "stop" stopAttrs $
+   \(ca,pa,xlink,class_,style,offset) ->
+   do let st css = Debug.Trace.trace (show style ++ show (parseStyles style H.empty)) $
+                   (parseStyles style H.empty) ++
+                   (parsePA     pa    H.empty) ++
+                   (cssStylesFromMap  css H.empty "stop" (id1 ca) class_)
+      return $ Stop (\css -> mkStops [getStopTriple (parseMaybeDouble offset) (st css)])
+
+-- (An opaque color, a stop fraction, an opacity).
+-- mkStops :: [(Colour Double, Double, Double)] -> [GradientStop]
+-- mkStops [(gray, 0, 1), (white, 0.5, 1), (purple, 1, 1)]
+
+getStopTriple offset styles = Debug.Trace.trace (show styles ++ show (col c, offset, opacity o)) (col c, offset, opacity o)
+  where col [Fill x] = x
+        col _ = white
+        opacity [FillOpacity x] = x
+        opacity _ =  1
+        c = Prelude.filter isFill styles
+        o = Prelude.filter isOpacity styles
+
+isFill (Fill _) = True
+isFill _        = False
+
+isOpacity (FillOpacity _) = True
+isOpacity _           = False
+
+-- | A gradient stop contains a color and fraction (usually between 0 and 1)
+--data GradientStop = GradientStop
+--     { _stopColor    :: SomeColor
+--     , _stopFraction :: Double}
 
 --------------------------------------------------------------------------------------
 -- sceletons
@@ -678,6 +743,3 @@ parseFeTurbulence = tagName "feTurbulence" feTurbulenceAttrs $
 
 animationElements = []
 
-------------------------------------------------------------------------------------
-
-gradientElements = []
