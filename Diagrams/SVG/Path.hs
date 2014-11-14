@@ -5,7 +5,7 @@
 -- Parsing the SVG path command, see <http://www.w3.org/TR/SVG/paths.html#PathData>
 -------------------------------------------------------------------------------------
 
-module Diagrams.SVG.Path 
+module Diagrams.SVG.Path
     (
     -- * Converting Path Commands
       commandsToTrails
@@ -95,9 +95,11 @@ parse_a = do { AT.string "a"; t <- many' tuple7; return (Just $ map (A Rel) t) }
 parse_A = do { AT.string "A"; t <- many' tuple7; return (Just $ map (A Abs) t) }
 
 -- | In SVG values can be separated with a "," but don't have to be
-doubleWithOptional a = do { AT.skipSpace;
-                            AT.choice [ do { AT.char a; b <- double; return b},
-                                        do {            b <- double; return b} ] }
+withOptional parser a = do { AT.skipSpace;
+                             AT.choice [ do { AT.char a; b <- parser; return b},
+                                         do {            b <- parser; return b} ] }
+
+doubleWithOptional a = double `withOptional` a
 
 spaceDouble = do { AT.skipSpace; a <- double; return a }
 
@@ -120,7 +122,7 @@ tuple7 = do { a <- spaceDouble;
               b <- doubleWithOptional ',';
               c <- spaceDouble;
               AT.skipSpace; d <- decimal;
-              AT.char ',';  e <- decimal;
+              e <- decimal `withOptional` ',';
               f <- spaceDouble;
               g <- doubleWithOptional ',';
               return (a, b, c, fromIntegral d, fromIntegral e, f, g) }
