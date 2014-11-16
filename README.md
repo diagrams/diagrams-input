@@ -4,7 +4,7 @@ svg-diagrams
 A SVG parser for diagrams using xml-conduit and attoparsec
 
 
-Issues
+Usage
 =======
 
 To load a SVG file into your diagram you currently have to delete the xmlns namespace in the SVG tag. E.g. edit the following:
@@ -25,12 +25,6 @@ into:
    height="300"
    id="svg2"
 ```
-
-Other things still on the TO DO list
-- gradients
-- bug in the arc-command for paths
-- text
-- full support for CSS
 
 Main library function
 ======================
