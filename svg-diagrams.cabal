@@ -20,7 +20,7 @@ Library
                     , conduit
                     , attoparsec >= 0.10
                     , time == 1.4.*
-                    , text >= 0.11
+                    , text >= 1
                     , xml-types == 0.3.*
                     , old-locale == 1.0.*
                     , filepath == 1.3.*

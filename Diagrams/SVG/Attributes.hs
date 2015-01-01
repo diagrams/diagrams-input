@@ -4,7 +4,7 @@
 --------------------------------------------------------------------
 -- |
 -- Module    : Diagrams.SVG.Attributes
--- Copyright : (c) 2014 Tillmann Vogt <tillk.vogt@googlemail.com>
+-- Copyright : (c) 2015 Tillmann Vogt <tillk.vogt@googlemail.com>
 -- License   : BSD3
 --
 -- Maintainer: diagrams-discuss@googlegroups.com
@@ -13,8 +13,9 @@
 
 module Diagrams.SVG.Attributes 
     (
+      initialStyles
     -- * Classes of attributes
-      CoreAttributes(..)
+    , CoreAttributes(..)
     , ConditionalProcessingAttributes(..)
     , DocumentEventAttributes(..)
     , GraphicalEventAttributes(..)
@@ -28,6 +29,7 @@ module Diagrams.SVG.Attributes
     , compose
     , parseDouble
     , parseMaybeDouble
+    , parseToDouble
     , parsePoints
     , parseTempl
     , parseIRI
@@ -38,12 +40,15 @@ module Diagrams.SVG.Attributes
     , PresentationAttributes(..)
     , applyStyleSVG
     , parseStyles
+    , parseLengths
+    , parseViewBox
     , parsePA
     , cssStylesFromMap
     , fragment
     , p
     -- * Parsing Colors
     -- * Parsing preserve aspect ratio
+    , parsePreserveAR
     , PreserveAR(..)
     , AlignSVG(..)
     , Place(..)
@@ -71,9 +76,9 @@ import Diagrams.SVG.Path
 import Diagrams.SVG.Tree
 import Text.CSS.Parse
 import qualified Data.HashMap.Strict as H
+import Data.Colour
 import Data.Colour.RGBSpace.HSL (hsl)
 import Data.Word (Word8)
-import Debug.Trace
 
 ---------------------------------------------------
 
@@ -141,11 +146,11 @@ data NameSpaces =
        } deriving Show
 
 --------------------------------------------------------------------------------
--- general parsing functions
+-- General parsing functions
 --------------------------------------------------------------------------------
 
--- parsing content separated by something, e.g. ";"  like in: "a;b;c;d;" or "a;b;c;d"
-separatedBy parse sep = do ls <- many' (choice [parseOne parse sep, parseOne' parse])
+-- | Parsing content separated by something, e.g. ";"  like in: "a;b;c;d;" or "a;b;c;d"
+separatedBy parse sep = do ls <- many1 (choice [parseOne parse sep, parseOne' parse])
                            return ls
 
 parseOne parse sep = do AT.skipSpace
@@ -157,7 +162,7 @@ parseOne' parse = do AT.skipSpace
                      s <- parse
                      return s
 
--- http://www.haskell.org/haskellwiki/Compose
+-- | See http://www.haskell.org/haskellwiki/Compose
 compose :: [a -> a] -> a -> a
 compose fs v = Prelude.foldl (flip (.)) id fs $ v
 
@@ -167,6 +172,10 @@ parseDouble l = either (const 0) id (AT.parseOnly AT.double l)
 parseMaybeDouble :: Maybe Text -> Double
 parseMaybeDouble l | isJust l = either (const 0) id (AT.parseOnly AT.double (fromJust l))
                    | otherwise = 0
+
+parseToDouble :: Maybe Text -> Maybe Double
+parseToDouble l | isJust l = either (const Nothing) Just (AT.parseOnly AT.double (fromJust l))
+                | otherwise = Nothing
 
 pp = parseDouble . pack
 
@@ -209,9 +218,9 @@ parse3 =
      return (TS3 (pack a) (pack b) (pack c))
 
 -----------------------------------------------------------------------------------------------------------------
--- transformations, see http://www.w3.org/TR/SVG11/coords.html#TransformAttribute
+-- Transformations, see http://www.w3.org/TR/SVG11/coords.html#TransformAttribute
 --    
--- example:  transform="translate(-121.1511,-167.6958) matrix(4.675013,0,0,4.675013,-1353.75,-678.4329)"
+-- Example:  transform="translate(-121.1511,-167.6958) matrix(4.675013,0,0,4.675013,-1353.75,-678.4329)"
 -----------------------------------------------------------------------------------------------------------------
 
 data Transform = Tr Tup
@@ -234,7 +243,7 @@ applyTr trs = compose (map getTransformations trs)
 getTransformations (Tr (T1 x))   = translateX x
 getTransformations (Tr (T2 x y)) = (translateX x) . (translateY y)
 
--- http://www.w3.org/TR/SVG11/coords.html#TransformMatrixDefined
+-- | See http://www.w3.org/TR/SVG11/coords.html#TransformMatrixDefined
 getTransformations (Matrix a b c d e f)
    = (translateX x) . (translateY y) . (scaleX scX) . (scaleY scY) . (rotateBy angle)
   where (angle, scX, scY, x, y) = matrixDecompose (Matrix a b c d e f)
@@ -246,7 +255,7 @@ getTransformations (Scale (T2 x y)) = (scaleX x) . (scaleY y)
 getTransformations (SkewX (T1 x)) = id
 getTransformations (SkewY (T1 y)) = id
 
--- http://math.stackexchange.com/questions/13150/extracting-rotation-scale-values-from-2d-transformation-matrix/13165#13165
+-- | See http://math.stackexchange.com/questions/13150/extracting-rotation-scale-values-from-2d-transformation-matrix/13165#13165
 matrixDecompose (Matrix m11 m12 m21 m22 m31 m32) = (rotation, scX, scY, transX, transY)
   where
     rotation = atan2 m12 m21
@@ -305,8 +314,8 @@ skewY =
 
 ------------------------------------------------------------------------------------------------
 -- Parse the styles of various presentation attributes.
--- example <path fill="#FFFFFF" ...
--- alternative way to writing everything into style="
+-- Example: <path fill="#FFFFFF" ...
+-- Alternative way to writing everything into style="
 ------------------------------------------------------------------------------------------------
 
 data PresentationAttributes =
@@ -371,30 +380,35 @@ data PresentationAttributes =
       , writingMode :: Maybe Text
       }
 
--- parsePA :: PresentationAttributes -> H.HashMap Text Tag > [(SVGStyle a)]
-parsePA pa grad = catMaybes
-      [(parseTempl (styleFillVal grad))      (fill pa),
-       (parseTempl styleFillRuleVal)         (fillRuleSVG pa),
-       (parseTempl styleFillOpacityVal)      (fillOpacity pa),
-       (parseTempl (styleStrokeVal grad))    (strokeSVG pa),
-       (parseTempl styleStrokeWidth)         (strokeWidth pa),
-       (parseTempl styleStrokeLineCapVal)    (strokeLinecap pa),
-       (parseTempl styleStrokeLineJoinVal)   (strokeLinejoin pa),
-       (parseTempl styleStrokeMiterLimitVal) (strokeMiterlimit pa)]
+-- parsePA :: PresentationAttributes -> HashMaps > [(SVGStyle a)]
+parsePA pa (nodes,_,grad) = l
+  where l = catMaybes
+         [(parseTempl (styleFillVal grad))      (fill pa),
+          (parseTempl styleFillRuleVal)         (fillRuleSVG pa),
+          (parseTempl styleFillOpacityVal)      (fillOpacity pa),
+          (parseTempl (styleStrokeVal grad))    (strokeSVG pa),
+          (parseTempl styleStrokeWidth)         (strokeWidth pa),
+          (parseTempl styleStrokeLineCapVal)    (strokeLinecap pa),
+          (parseTempl styleStrokeLineJoinVal)   (strokeLinejoin pa),
+          (parseTempl styleStrokeMiterLimitVal) (strokeMiterlimit pa),
+          (parseTempl (styleClipPathVal nodes)) (clipPath pa),
+          (parseTempl styleStrokeDashArrayVal)  (strokeDasharray pa) ]
 
 --------------------------------------------------------------------------------------------
 -- Parse the style attribute, see http://www.w3.org/TR/SVG/painting.html
 --                            and http://www.w3.org/TR/SVG/styling.html
--- example: style="fill:white;stroke:black;stroke-width:0.503546"
+-- Example: style="fill:white;stroke:black;stroke-width:0.503546"
 --------------------------------------------------------------------------------------------
 
-data SVGStyle a = Fill (Colour a) | FillTex Texture | FillOpacity Double | FillRule FR
-                | Stroke (Colour a) | StrokeTex Texture | StrokeWidth Double | StrokeLineCap LineCap
-                | StrokeLineJoin LineJoin | StrokeMiterLimit Double | StrokeOpacity Double
+data SVGStyle a = Fill (AlphaColour a) | FillTex Texture | FillOpacity Double | FillRule FR
+                | Stroke (AlphaColour a) | StrokeTex Texture | StrokeWidth LenPercent | StrokeLineCap LineCap
+                | StrokeLineJoin LineJoin | StrokeMiterLimit Double | StrokeDasharray [LenPercent] | StrokeOpacity Double
+                | ClipPath (Path R2)
                 | EmptyStyle
 
 data Unit = EM | EX | PX | IN | CM | MM | PT | PC deriving (Show)
 data FR = Even_Odd | Nonzero | Inherit  deriving (Show)
+data LenPercent = Len Double | Percent Double -- TODO implement
 
 instance Show (SVGStyle a) where
   show (Fill c) = "Fill"
@@ -407,24 +421,29 @@ instance Show (SVGStyle a) where
   show (StrokeLineCap l) = "StrokeLineCap"
   show (StrokeLineJoin l) = "StrokeLineJoin"
   show (StrokeMiterLimit l) = "StrokeMiterLimit"
+  show (StrokeDasharray l) = "StrokeDasharray"
   show (StrokeOpacity o) = "StrokeOpacity"
+  show (ClipPath path) = "ClipPath"
   show (EmptyStyle) = ""
 
-parseStyles :: (Read a, Floating a, RealFrac a, Ord a) => Maybe Text -> H.HashMap Text Texture -> [(SVGStyle a)]
-parseStyles text grad = either (const []) id $
-                        AT.parseOnly (separatedBy (parseStyleAttr grad) ";") (fromMaybe empty text)
+instance Show (LenPercent) where
+  show (Len x) = show x
+  show (Percent x) = show x
 
-parseStyleAttr grad = AT.choice [styleFill grad, styleFillOpacity, styleFillRule, 
-                                 styleStroke grad, styleStrokeWidth, styleStopColor, styleStopOpacity,
-                                 styleStrokeLineCap, styleStrokeLineJoin, styleStrokeMiterLimit]
+parseStyles :: (Read a, Floating a, RealFrac a, Ord a) => Maybe Text -> HashMaps -> [(SVGStyle a)]
+parseStyles text hmaps = either (const []) id $
+                         AT.parseOnly (separatedBy (parseStyleAttr hmaps) ";") (fromMaybe empty text)
 
--- This function is called on every tag and returns a list of style-attributes to apply (if there is a rule that matches)
+parseStyleAttr (ns,css,grad) =
+  AT.choice [styleFill grad, styleFillOpacity, styleFillRule, 
+             styleStroke grad, styleStrokeWidth, styleStopColor, styleStopOpacity,
+             styleStrokeLineCap, styleStrokeLineJoin, styleStrokeMiterLimit, styleClipPath ns, styleStrokeDashArray]
+
+-- | This function is called on every tag and returns a list of style-attributes to apply (if there is a rule that matches)
 -- TO DO: CSS2 + CSS3 selectors
 cssStylesFromMap :: (Read a, Floating a, RealFrac a, Ord a) =>
-                    H.HashMap Text [(Text, Text)] ->
-                    H.HashMap Text Texture ->
-                    Text -> Maybe Text ->  Maybe Text -> [(SVGStyle a)]
-cssStylesFromMap css grad tagName id_ class_ = parseStyles ( Just ( T.concat ( map f attributes ) ) ) grad
+                    HashMaps -> Text -> Maybe Text ->  Maybe Text -> [(SVGStyle a)]
+cssStylesFromMap (ns,css,grad) tagName id_ class_ = parseStyles ( Just ( T.concat ( map f attributes ) ) ) (ns,css,grad)
   where f (attr, val) = (attr `snoc` ':') `append` (val `snoc` ';')
         styleFromClass cl = [H.lookup ('.' `cons` cl) css] ++ [H.lookup (tagName `append` ('.' `cons` cl)) css]
         attributes = concat $ catMaybes
@@ -438,7 +457,9 @@ parseTempl p = (either (const Nothing) Just) .
                (AT.parseOnly p).
                (fromMaybe empty)
 
-p x = fromMaybe 0 $ parseTempl styleLength x
+p x = unL $ fromMaybe (Len 0) $ parseTempl styleLength x -- TODO implement percentage (relative size to viewbox)
+  where unL (Len x) = x
+        unL _ = 1
 
 parseIRI = do AT.choice [ funcIRI, absoluteOrRelativeIRI ]
 
@@ -459,47 +480,60 @@ fragment x = fromMaybe T.empty $ fmap snd (parseTempl parseIRI x) -- look only f
 
 applyStyleSVG stylesFromMap hmap = compose (map getStyles (stylesFromMap hmap))
 
-stops = mkStops [(gray, 0, 1), (white, 0.5, 1), (purple, 1, 1)]
-gradient = mkLinearGradient stops ((-0.5) ^& 0) (0.5 ^& 0) GradPad
+-- | Inital styles, see: http://www.w3.org/TR/SVG/painting.html#FillProperty
+initialStyles = lwL 1 . fc black . lineCap LineCapButt . lineJoin LineJoinMiter -- lineMiterLimit 4
+               -- fillRule nonzero -- TODO
+               -- fillOpcacity 1 -- TODO
+               -- stroke none -- TODO
+               -- stroke-dasharray none
+               -- stroke-dashoffset 0 #
+               -- stroke-opacity 1 #
+               -- display inline
 
-getStyles (Fill c) = fc c
+getStyles (Fill c) = fcA c
 getStyles (FillTex x) = fillTexture x
 getStyles (FillOpacity d) = id -- we currently don't differentiate between fill opacity and stroke opacity
 getStyles (FillRule Even_Odd) = fillRule EvenOdd
 getStyles (FillRule Nonzero) = id
 getStyles (FillRule Inherit) = id
-
-getStyles (Stroke x) = lc x
-getStyles (StrokeTex x) = id -- strokeTexture x
-getStyles (StrokeWidth x) = lwL x
+getStyles (Stroke x) = lcA x
+getStyles (StrokeTex x) = lineTexture x
+getStyles (StrokeWidth (Len x)) = lwL x
+getStyles (StrokeWidth (Percent x)) = lwG x
 getStyles (StrokeLineCap x) = lineCap x
 getStyles (StrokeLineJoin x) = lineJoin x
 getStyles (StrokeMiterLimit x) = id
+getStyles (StrokeDasharray array) = dashingL (map dash array) 0
+  where dash (Len x) = x
+        dash (Percent x) = x -- TODO implement percent length
 getStyles (StrokeOpacity x) = id -- we currently don't differentiate between fill opacity and stroke opacity
+getStyles (ClipPath path) = clipBy path
+getStyles _ = id
 
--- example: style="fill:#ffb13b" style="fill:red"
+-- | Example: style="fill:#ffb13b" style="fill:red"
 styleFill hmap =
   do AT.skipSpace
      AT.string "fill:"
+     AT.skipSpace
      styleFillVal hmap
 
 styleFillVal gradients = AT.choice [ styleFillColourVal, styleFillTexURL gradients ]
 
 styleFillColourVal =
-  do c <- AT.choice [colorRRGGBB, colorRGB, colorString, colorHSL, colorNone]
+  do c <- AT.choice [colorRRGGBB, colorRGB, colorString, colorRGBPercent, colorHSLPercent, colorNone]
      return (Fill c)
 
 styleFillTexURL gradients =
   do (absrel,fragment) <- parseIRI
      let t = H.lookup fragment gradients
-     -- Debug.Trace.trace (show (H.lookup fragment hmap)) $
      if isJust t then return (FillTex (fromJust t))
                  else return EmptyStyle
 
--- example: style="fill-rule:evenodd"
+-- | Example: style="fill-rule:evenodd"
 styleFillRule =
   do AT.skipSpace
      AT.string "fill-rule:"
+     AT.skipSpace
      styleFillRuleVal
 
 styleFillRuleVal =
@@ -508,26 +542,28 @@ styleFillRuleVal =
                  (do{ AT.string "inherit"; return $ FillRule Inherit })
                ]
 
--- example: style="fill:#ffb13b" style="fill:red"
+-- | Example: style="fill:#ffb13b" style="fill:red"
 styleFillOpacity =
   do AT.skipSpace
      AT.string "fill-opacity:"
+     AT.skipSpace
      styleFillOpacityVal
 
 styleFillOpacityVal =
   do o <- double
      return (FillOpacity o)
 
--- example: style="stroke:black"
+-- | Example: style="stroke:black"
 styleStroke hmap =
   do AT.skipSpace
      AT.string "stroke:"
+     AT.skipSpace
      styleStrokeVal hmap
 
 styleStrokeVal gradients = AT.choice [ styleStrokeColourVal, styleStrokeTexURL gradients ]
 
 styleStrokeColourVal =
-  do c <- AT.choice [colorRRGGBB, colorRGB, colorString, colorHSL, colorNone]
+  do c <- AT.choice [colorRRGGBB, colorRGB, colorString, colorRGBPercent, colorHSLPercent, colorNone]
      return (Stroke c)
 
 styleStrokeTexURL gradients =
@@ -536,19 +572,25 @@ styleStrokeTexURL gradients =
      if isJust t then return (StrokeTex (fromJust t))
                  else return EmptyStyle
 
--- example: style="stroke-width:0.503546"
+-- | Example: style="stroke-width:0.503546"
 styleStrokeWidth =
   do AT.skipSpace
      AT.string "stroke-width:"
-     (fmap StrokeWidth styleLength)
+     len <- styleLength
+     return (StrokeWidth len)
 
-styleLength = do AT.choice [ styleLengthWithUnit, double ]
+styleLength = do AT.skipSpace
+                 d <- AT.double
+                 AT.skipSpace
+                 AT.choice [ styleLengthWithUnit d, lengthPercent d, return (Len d) ]
 
-styleLengthWithUnit =
-  do w <- double
-     u <- styleUnit
-     return (w * (unitFactor u))
+styleLengthWithUnit d =
+  do u <- styleUnit
+     return (Len (d * (unitFactor u)))
 
+lengthPercent d =
+  do AT.string "%"
+     return (Percent d)
 
 styleUnit = do AT.choice [styleEM,styleEX,stylePX,styleIN,styleCM,styleMM,stylePT,stylePC]
 
@@ -570,7 +612,7 @@ unitFactor MM = 3.543307
 unitFactor PT = 1.25
 unitFactor PC = 15
 
--- example: "stroke-linecap:butt"
+-- | Example: "stroke-linecap:butt"
 styleStrokeLineCap =
   do AT.skipSpace
      AT.string "stroke-linecap:"
@@ -585,7 +627,7 @@ butt    = do { AT.string "butt";   return LineCapButt }
 round0  = do { AT.string "round";  return LineCapRound }
 square0 = do { AT.string "square"; return LineCapSquare }
 
--- example: "stroke-linejoin:miter;"
+-- | Example: "stroke-linejoin:miter;"
 styleStrokeLineJoin =
   do AT.skipSpace
      AT.string "stroke-linejoin:"
@@ -600,7 +642,31 @@ miter  = do { AT.string "miter"; return LineJoinMiter }
 round1 = do { AT.string "round"; return LineJoinRound }
 bevel  = do { AT.string "bevel"; return LineJoinBevel }
 
--- example: "stroke-miterlimit:miter;"
+styleClipPath hmap =
+  do AT.skipSpace
+     AT.string "clip-path:"
+     AT.skipSpace
+     styleClipPathVal hmap
+
+styleClipPathVal hmap =
+  do (absrel,fragment) <- parseIRI
+     let t = H.lookup fragment hmap
+     if isJust t then return (ClipPath $ evalPath hmap (fromJust t))
+                 else return EmptyStyle
+
+-- | Evaluate the tree to a path that is needed for clipPaths
+evalPath :: H.HashMap Text Tag -> Tag -> Path R2
+evalPath hmap (Leaf             id1 path diagram) = path
+evalPath hmap (Reference selfId id1 wh f) = evalPath hmap (lookUp hmap (fragment id1))
+evalPath hmap (SubTree _        id1 viewBox ar f children) = mconcat (map (evalPath hmap) children)
+evalPath hmap _ = mempty
+
+-- | Lookup a diagram and return an empty diagram in case the SVG-file has a wrong reference
+lookUp hmap i | isJust l  = fromJust l
+              | otherwise = Leaf Nothing mempty mempty -- an empty diagram if we can't find the id
+  where l = H.lookup i hmap
+
+-- | Example: "stroke-miterlimit:miter;"
 styleStrokeMiterLimit =
   do AT.skipSpace
      AT.string "stroke-miterlimit:"
@@ -611,14 +677,16 @@ styleStrokeMiterLimitVal =
   do l <- double
      return (StrokeMiterLimit l)
 
-{-
-styleStrokeDasharray =
+styleStrokeDashArray =
   do AT.skipSpace
      AT.string "stroke-dasharray:"
-     AT.skipSpace
-     ps <- parsePoints
-     return (StrokeDasharray ps)
--}
+     styleStrokeDashArrayVal
+
+styleStrokeDashArrayVal =
+  do len <- parseLengths
+     return (StrokeDasharray len)
+
+parseLengths = separatedBy styleLength ","
 
 styleStrokeOpacity =
   do AT.skipSpace
@@ -645,22 +713,23 @@ styleStopOpacity =
 -- To Do: Visibility, marker
 
 -----------------------------------------------------------------------
--- colors, see http://www.w3.org/TR/SVG/color.html and 
+-- Colors, see http://www.w3.org/TR/SVG/color.html and 
 --             http://www.w3.org/TR/SVG/painting.html#SpecifyingPaint
 -----------------------------------------------------------------------
 
 colorString =
   do a <- Data.Attoparsec.Text.takeWhile isAlpha
-     readColourName (unpack a)
+     c <- readColourName (unpack a)
+     return (opaque c)
 
 colorRGB =
   do AT.char '#'
      h0 <- satisfy isHexDigit
      h1 <- satisfy isHexDigit
      h2 <- satisfy isHexDigit
-     return $ sRGB24 (fromIntegral ((digitToInt h0) * 16))
-                     (fromIntegral ((digitToInt h1) * 16))
-                     (fromIntegral ((digitToInt h2) * 16))
+     return $ opaque ( sRGB24 (fromIntegral ((digitToInt h0) * 16))
+                              (fromIntegral ((digitToInt h1) * 16))
+                              (fromIntegral ((digitToInt h2) * 16)) )
 
 colorRRGGBB =
   do AT.char '#'
@@ -670,11 +739,26 @@ colorRRGGBB =
      h3 <- satisfy isHexDigit
      h4 <- satisfy isHexDigit
      h5 <- satisfy isHexDigit
-     return $ sRGB24 (fromIntegral ((digitToInt h0) * 16 + (digitToInt h1)) )
-                     (fromIntegral ((digitToInt h2) * 16 + (digitToInt h3)) )
-                     (fromIntegral ((digitToInt h4) * 16 + (digitToInt h5)) )
+     return $ opaque ( sRGB24 (fromIntegral ((digitToInt h0) * 16 + (digitToInt h1)) )
+                              (fromIntegral ((digitToInt h2) * 16 + (digitToInt h3)) )
+                              (fromIntegral ((digitToInt h4) * 16 + (digitToInt h5)) ) )
 
-colorHSL =
+colorRGBPercent =
+  do AT.string "rgb"
+     AT.skipSpace
+     AT.char '('
+     r <- parseUntil '%'
+     AT.skipSpace
+     AT.char ','
+     g <- parseUntil '%'
+     AT.skipSpace
+     AT.char ','
+     b <- parseUntil '%'
+     AT.skipSpace
+     AT.char ')'
+     return $ opaque (sRGB (read r) (read g) (read b))
+
+colorHSLPercent =
   do AT.string "hsl"
      AT.skipSpace
      AT.char '('
@@ -686,22 +770,35 @@ colorHSL =
      AT.skipSpace
      AT.char ')'
      let c = hsl (read h) (read s) (read l)
-     return (sRGB (channelRed c) (channelGreen c) (channelBlue c))
+     return $ opaque (sRGB (channelRed c) (channelGreen c) (channelBlue c))
 
 colorNone =
   do AT.string "none"
-     return (sRGB24 0 0 0)
+     return transparent
 
 
 -------------------------------------------------------------------------------------
--- Parsing preserve aspect ratio
+-- | Example: viewBox="0 0 100 30"
+parseViewBox x = parseTempl viewBox x
+
+viewBox =
+  do AT.skipSpace
+     minx <- double
+     AT.skipSpace
+     miny <- double
+     AT.skipSpace
+     width  <- double
+     AT.skipSpace
+     height <- double
+     AT.skipSpace
+     return (minx, miny, width, height)
+
+-------------------------------------------------------------------------------------
+-- Parse preserve aspect ratio
 -- e.g. preserveAspectRatio="xMaxYMax meet"
 -------------------------------------------------------------------------------------
 
-data PreserveAR = PAR AlignSVG MeetOrSlice -- ^ inspired by the way images are included in SVG, see <http://www.w3.org/TR/SVG11/coords.html#PreserveAspectRatioAttribute>
-data AlignSVG = AlignXY Place Place -- ^ alignment in x and y direction
-type Place = Double -- ^ A value between 0 and 1, where 0 is the minimal value and 1 the maximal value
-data MeetOrSlice = Meet | Slice
+parsePreserveAR x = parseTempl preserveAR x
 
 preserveAR =
    do AT.skipSpace
@@ -754,5 +851,4 @@ alignXMidYMax =
 alignXMaxYMax =
    do AT.string "xMaxYMax"
       return (AlignXY 1 1)
-
 

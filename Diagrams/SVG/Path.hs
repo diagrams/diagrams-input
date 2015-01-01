@@ -176,7 +176,7 @@ outline paths cs = paths ++ [(newPath,newPoint)]
             pathFromTrail $
             if isClosed (sel3 concatPaths)
             then wrapLoop $ closeLine (mconcat (getTrail (sel3 concatPaths)))
-            else wrapLine $            mconcat (getTrail (sel3 concatPaths))
+            else wrapLoop $ closeLine (mconcat (getTrail (sel3 concatPaths))) -- unfortunately this has to be closed also, because some svgs fill paths that are open
   newPoint | isClosed (sel3 concatPaths) = (trx, try) -- the endpoint is the old startpoint
            | otherwise                   = sel2 concatPaths
 

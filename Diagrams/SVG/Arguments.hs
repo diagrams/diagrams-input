@@ -442,6 +442,7 @@ feBlendAttrs =
      fpa <- filterPrimitiveAttributes
      l <- mapM optionalAttr
       ["class","style","in","in2","mode"]
+     ignoreAttrs
      return $ (\[class_,style,in1,in2,mode] -> (ca,pa,fpa,class_,style,in1,in2,mode) ) l
 
 feColorMatrixAttrs =
@@ -450,6 +451,7 @@ feColorMatrixAttrs =
      fpa <- filterPrimitiveAttributes
      l <- mapM optionalAttr
       ["class","style","in","type","values"]
+     ignoreAttrs
      return $ (\[class_,style,in1,type1,values] -> (ca,pa,fpa,class_,style,in1,type1,values) ) l
 
 feComponentTransferAttrs =
@@ -458,6 +460,7 @@ feComponentTransferAttrs =
      fpa <- filterPrimitiveAttributes
      l <- mapM optionalAttr
       ["class","style","in"]
+     ignoreAttrs
      return $ (\[class_,style,in1] -> (ca,pa,fpa,class_,style,in1) ) l
 feCompositeAttrs =
   do ca <- coreAttributes
@@ -465,6 +468,7 @@ feCompositeAttrs =
      fpa <- filterPrimitiveAttributes
      l <- mapM optionalAttr
       ["class","style","in","in2","operator","k1","k2","k3","k4"]
+     ignoreAttrs
      return $ (\[class_,style,in1,in2,operator,k1,k2,k3,k4] -> (ca,pa,fpa,class_,style,in1,in2,operator,k1,k2,k3,k4) ) l
 
 feConvolveMatrixAttrs =
@@ -473,6 +477,7 @@ feConvolveMatrixAttrs =
      fpa <- filterPrimitiveAttributes
      l <- mapM optionalAttr
       ["class","style","in","order","kernelMatrix","divisor","bias","targetX","targetY","edgeMode","kernelUnitLength","preserveAlpha"]
+     ignoreAttrs
      return $ (\[class_,style,order,km,d,bias,tx,ty,em,ku,pa] -> (ca,pa,fpa,class_,style,order,km,d,bias,tx,ty,em,ku,pa) ) l
 
 feDiffuseLightingAttrs =
@@ -481,6 +486,7 @@ feDiffuseLightingAttrs =
      fpa <- filterPrimitiveAttributes
      l <- mapM optionalAttr
       ["class","style","in","surfaceScale","diffuseConstant","kernelUnitLength"]
+     ignoreAttrs
      return $ (\[class_,style,in1,surfaceScale,diffuseConstant,kuLength] -> (ca,pa,fpa,class_,style,in1,surfaceScale,diffuseConstant,kuLength) ) l
 
 feDisplacementMapAttrs =
@@ -489,6 +495,7 @@ feDisplacementMapAttrs =
      fpa <- filterPrimitiveAttributes
      l <- mapM optionalAttr
       ["class","style","in","in2","scale","xChannelSelector","yChannelSelector"]
+     ignoreAttrs
      return $ (\[class_,style,in1,in2,sc,xChan,yChan] -> (ca,pa,fpa,class_,style,in1,in2,sc,xChan,yChan) ) l
 
 feFloodAttrs =
@@ -497,6 +504,7 @@ feFloodAttrs =
      fpa <- filterPrimitiveAttributes
      l <- mapM optionalAttr
       ["class","style"]
+     ignoreAttrs
      return $ (\[class_,style] -> (ca,pa,fpa,class_,style) ) l
 
 feGaussianBlurAttrs =
@@ -505,6 +513,7 @@ feGaussianBlurAttrs =
      fpa <- filterPrimitiveAttributes
      l <- mapM optionalAttr
       ["class","style","in","stdDeviation"]
+     ignoreAttrs
      return $ (\[class_,style,in1,stdDeviation] -> (ca,pa,fpa,class_,style,in1,stdDeviation) ) l
 
 feImageAttrs =
@@ -514,6 +523,7 @@ feImageAttrs =
      xlink <- xlinkAttributes
      l <- mapM optionalAttr
       ["class","style","externalResourcesRequired","preserveAspectRatio"]
+     ignoreAttrs
      return $ (\[class_,style,ext,pa] -> (ca,pa,fpa,xlink,class_,style,ext,pa) ) l
 
 feMergeAttrs =
@@ -522,6 +532,7 @@ feMergeAttrs =
      fpa <- filterPrimitiveAttributes
      l <- mapM optionalAttr
       ["class","style"]
+     ignoreAttrs
      return $ (\[class_,style] -> (ca,pa,fpa,class_,style) ) l
 
 feMorphologyAttrs =
@@ -530,6 +541,7 @@ feMorphologyAttrs =
      fpa <- filterPrimitiveAttributes
      l <- mapM optionalAttr
       ["class","style","in","operator","radius"]
+     ignoreAttrs 
      return $ (\[class_,style,in1,operator,radius] -> (ca,pa,fpa,class_,style,in1,operator,radius) ) l
 
 feOffsetAttrs =
@@ -538,6 +550,7 @@ feOffsetAttrs =
      fpa <- filterPrimitiveAttributes
      l <- mapM optionalAttr
       ["class","style","in","dx","dy"]
+     ignoreAttrs
      return $ (\[class_,style,in1,dx,dy] -> (ca,pa,fpa,class_,style,in1,dx,dy) ) l
 
 feSpecularLightingAttrs =
@@ -546,6 +559,7 @@ feSpecularLightingAttrs =
      fpa <- filterPrimitiveAttributes
      l <- mapM optionalAttr
       ["class","style","in","surfaceScale","specularConstant","specularExponent","kernelUnitLength"]
+     ignoreAttrs
      return $ (\[class_,style,in1,surfaceScale,sc,se,ku] -> (ca,pa,fpa,class_,style,in1,surfaceScale,sc,se,ku) ) l
 
 feTileAttrs =
@@ -554,6 +568,7 @@ feTileAttrs =
      fpa <- filterPrimitiveAttributes
      l <- mapM optionalAttr
       ["class","style","in"]
+     ignoreAttrs
      return $ (\[class_,style,in1] -> (ca,pa,fpa,class_,style,in1) ) l
 
 feTurbulenceAttrs =
@@ -562,5 +577,6 @@ feTurbulenceAttrs =
      fpa <- filterPrimitiveAttributes
      l <- mapM optionalAttr
       ["class","style","in","in2","mode"]
+     ignoreAttrs
      return $ (\[class_,style,in1,in2,mode] -> (ca,pa,fpa,class_,style,in1,in2,mode) ) l
 
