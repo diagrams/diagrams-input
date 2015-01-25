@@ -1,30 +1,8 @@
 svg-diagrams
 ============
 
-A SVG parser for diagrams using xml-conduit and attoparsec
+A SVG parser for diagrams using xml-conduit and attoparsec. The goal is to support all tags and features that are commonly used and that are supported by diagrams. For another excellent svg-parser, that is currently not targeted at `diagrams` see: https://github.com/Twinside/svg-tree.
 
-
-Usage
-=======
-
-To load a SVG file into your diagram you currently have to delete the xmlns namespace in the SVG tag. E.g. edit the following:
-
-```xml
-<svg
-   xmlns="http://www.w3.org/2000/svg"
-   width="300"
-   height="300"
-   id="svg2"
-```
-
-into:
-
-```xml
-<svg
-   width="300"
-   height="300"
-   id="svg2"
-```
 
 Main library function
 ======================
