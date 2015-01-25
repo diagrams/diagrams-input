@@ -1,7 +1,7 @@
 svg-diagrams
 ============
 
-A SVG parser for diagrams using xml-conduit and attoparsec. The goal is to support all tags and features that are commonly used and that are supported by diagrams. For another excellent svg-parser, that is currently not targeted at `diagrams` see: https://github.com/Twinside/svg-tree.
+A SVG parser for diagrams using xml-conduit and attoparsec. The goal is to support all tags and features that are commonly used and that are supported by diagrams. For another excellent svg-parser, that is currently not targeted at `diagrams` see: [svg-tree] (https://github.com/Twinside/svg-tree).
 
 
 Main library function
