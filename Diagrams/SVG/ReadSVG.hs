@@ -83,6 +83,7 @@ import Text.XML.Stream.Parse hiding (parseText)
 import Text.CSS.Parse (parseBlocks)
 import Prelude hiding (FilePath)
 import Data.Tuple.Select
+import qualified Data.Conduit.List as CL
 
 --------------------------------------------------------------------------------------
 -- | Main library function
@@ -108,7 +109,7 @@ import Data.Tuple.Select
 --
 readSVGFile :: PreserveAR -> Width -> Height -> FilePath -> IO (Diagram B R2)
 readSVGFile preserveAR width height fp =
-  do tree <- runResourceT $ parseFile def fp $$ force "svg tag required" parseSVG 
+  do tree <- runResourceT $ parseFile def fp $$ force "error in parseSVG" parseSVG
               -- (C.map stripNamespace parseSVG)
      let (ns,css,grad) = nodes ([],[],[]) tree
      let nmap    = H.fromList ns -- needed because of the use-tag and clipPath
@@ -184,7 +185,7 @@ cutOutViewBox _ = id
 
 -- | Parse \<svg\>, see <http://www.w3.org/TR/SVG/struct.html#SVGElement>
 parseSVG :: MonadThrow m => Sink Event m (Maybe Tag)
-parseSVG = tagName "svg" svgAttrs $
+parseSVG = tagName "{http://www.w3.org/2000/svg}svg" svgAttrs $
    \(cpa,ca,gea,pa,class_,style,ext,x,y,w,h,vb,ar,zp,ver,baseprof,cScripT,cStyleT,xmlns,xml) ->
    do gs <- many svgContent
       let st hmaps = (parseStyles style hmaps) ++ -- parse the style attribute (style="stop-color:#000000;stop-opacity:0.8")
