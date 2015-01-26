@@ -206,7 +206,7 @@ svgContent = choose -- the likely most common are checked first
 ---------------------------------------------------------------------------
 -- | Parse \<g\>, see <http://www.w3.org/TR/SVG/struct.html#GElement>
 parseG :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseG = tagName "g" gAttrs
+parseG = tagName "{http://www.w3.org/2000/svg}g" gAttrs
    $ \(cpa,ca,gea,pa,class_,style,ext,tr) ->
    do insideGs <- many gContent
       let st hmaps = (parseStyles style hmaps) ++
@@ -228,7 +228,7 @@ gContent = choose -- the likely most common are checked first
 ---------------------------------------------------------------------------
 -- | Parse \<defs\>, see <http://www.w3.org/TR/SVG/struct.html#DefsElement>
 parseDefs :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseDefs = tagName "defs" gAttrs $
+parseDefs = tagName "{http://www.w3.org/2000/svg}defs" gAttrs $
    \(cpa,ca,gea,pa,class_,style,ext,tr) ->
    do insideDefs <- many gContent
       let st hmaps = (parseStyles style hmaps) ++
@@ -251,7 +251,7 @@ parseDefs = tagName "defs" gAttrs $
 --  </style>
 
 parseStyle :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseStyle = tagName "style" sAttrs $
+parseStyle = tagName "{http://www.w3.org/2000/svg}style" sAttrs $
    \(ca,type_,media,title) ->
    do insideStyle <- content
       let blocks = parseBlocks insideStyle -- parseBlocks :: Text -> Either String [CssBlock]
@@ -263,7 +263,7 @@ parseStyle = tagName "style" sAttrs $
 -----------------------------------------------------------------------------------
 -- | Parse \<symbol\>, see <http://www.w3.org/TR/SVG/struct.html#SymbolElement>
 parseSymbol :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseSymbol = tagName "symbol" symbolAttrs $
+parseSymbol = tagName "{http://www.w3.org/2000/svg}symbol" symbolAttrs $
    \(ca,gea,pa,class_,style,ext,ar,viewbox) ->
    do insideSym <- many gContent
       let st hmaps = (parseStyles style hmaps) ++
@@ -277,7 +277,7 @@ parseSymbol = tagName "symbol" symbolAttrs $
 
 -----------------------------------------------------------------------------------
 -- | Parse \<use\>, see <http://www.w3.org/TR/SVG/struct.html#UseElement>
-parseUse = tagName "use" useAttrs
+parseUse = tagName "{http://www.w3.org/2000/svg}use" useAttrs
    $ \(ca,cpa,gea,pa,xlink,class_,style,ext,tr,x,y,w,h) ->
    do insideUse <- many useContent
       let st hmaps = (parseStyles style hmaps) ++
@@ -290,7 +290,7 @@ useContent = choose [parseDesc,parseTitle] -- descriptive elements
 
 --------------------------------------------------------------------------------------
 -- | Parse \<switch\>, see <http://www.w3.org/TR/SVG/struct.html#SwitchElement>
-parseSwitch = tagName "switch" switchAttrs
+parseSwitch = tagName "{http://www.w3.org/2000/svg}switch" switchAttrs
    $ \(cpa,ca,gea,pa,class_,style,ext,tr) ->
    do insideSwitch <- many switchContent
       return $ Leaf (id1 ca) mempty mempty
@@ -300,7 +300,7 @@ switchContent = choose [parsePath, parseRect, parseCircle, parseEllipse, parseLi
 -----------------------------------------------------------------------------------
 -- | Parse \<rect\>,  see <http://www.w3.org/TR/SVG11/shapes.html#RectElement>
 parseRect :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseRect = tagName "rect" rectAttrs $
+parseRect = tagName "{http://www.w3.org/2000/svg}rect" rectAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,ar,tr,x,y,w,h,rx,ry) -> do
     let st hmaps = (parseStyles style hmaps) ++
                    (parsePA  pa  hmaps) ++
@@ -318,7 +318,7 @@ parseRect = tagName "rect" rectAttrs $
 ---------------------------------------------------------------------------------------------------
 -- | Parse \<circle\>,  see <http://www.w3.org/TR/SVG11/shapes.html#CircleElement>
 parseCircle :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseCircle = tagName "circle" circleAttrs $
+parseCircle = tagName "{http://www.w3.org/2000/svg}circle" circleAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,r,cx,cy) -> do
     let st hmaps = (parseStyles style hmaps) ++
                    (parsePA  pa  hmaps) ++
@@ -332,7 +332,7 @@ parseCircle = tagName "circle" circleAttrs $
 ---------------------------------------------------------------------------------------------------
 -- | Parse \<ellipse\>,  see <http://www.w3.org/TR/SVG11/shapes.html#EllipseElement>
 parseEllipse :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseEllipse = tagName "ellipse" ellipseAttrs $
+parseEllipse = tagName "{http://www.w3.org/2000/svg}ellipse" ellipseAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,rx,ry,cx,cy) -> do
     let st hmaps = (parseStyles style hmaps) ++
                    (parsePA  pa  hmaps) ++
@@ -346,7 +346,7 @@ parseEllipse = tagName "ellipse" ellipseAttrs $
 ---------------------------------------------------------------------------------------------------
 -- | Parse \<line\>,  see <http://www.w3.org/TR/SVG11/shapes.html#LineElement>
 parseLine :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseLine = tagName "line" lineAttrs $
+parseLine = tagName "{http://www.w3.org/2000/svg}line" lineAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,x1,y1,x2,y2) -> do
     let st hmaps = (parseStyles style hmaps) ++
                    (parsePA  pa  hmaps) ++
@@ -363,7 +363,7 @@ parseLine = tagName "line" lineAttrs $
 ---------------------------------------------------------------------------------------------------
 -- | Parse \<polyline\>,  see <http://www.w3.org/TR/SVG11/shapes.html#PolylineElement>
 parsePolyLine :: MonadThrow m => Consumer Event m (Maybe Tag)
-parsePolyLine = tagName "polyline" polygonAttrs $
+parsePolyLine = tagName "{http://www.w3.org/2000/svg}polyline" polygonAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,points) -> do
     let st hmaps = (parseStyles style hmaps) ++
                    (parsePA  pa  hmaps) ++
@@ -383,7 +383,7 @@ parsePolyLine = tagName "polyline" polygonAttrs $
 --------------------------------------------------------------------------------------------------
 -- | Parse \<polygon\>,  see <http://www.w3.org/TR/SVG11/shapes.html#PolygonElement>
 parsePolygon :: MonadThrow m => Consumer Event m (Maybe Tag)
-parsePolygon = tagName "polygon" polygonAttrs $
+parsePolygon = tagName "{http://www.w3.org/2000/svg}polygon" polygonAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,points) -> do
     let st hmaps = (parseStyles style hmaps) ++
                    (parsePA  pa  hmaps) ++
@@ -404,7 +404,7 @@ parsePolygon = tagName "polygon" polygonAttrs $
 --------------------------------------------------------------------------------------------------
 -- | Parse \<path\>,  see <http://www.w3.org/TR/SVG11/paths.html#PathElement>
 parsePath :: MonadThrow m => Consumer Event m (Maybe Tag)
-parsePath = tagName "path" pathAttrs $
+parsePath = tagName "{http://www.w3.org/2000/svg}path" pathAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,d,pathLength) -> do
     let st hmaps = (parseStyles style hmaps) ++
                    (parsePA  pa  hmaps) ++
@@ -418,7 +418,7 @@ parsePath = tagName "path" pathAttrs $
 -------------------------------------------------------------------------------------------------
 -- | Parse \<clipPath\>, see <http://www.w3.org/TR/SVG/masking.html#ClipPathElement>
 parseClipPath :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseClipPath = tagName "clipPath" clipPathAttrs $
+parseClipPath = tagName "{http://www.w3.org/2000/svg}clipPath" clipPathAttrs $
   \(cpa,ca,pa,class_,style,ext,ar,viewbox) -> do
     insideClipPath <- many clipPathContent
     let st hmaps = (parseStyles style hmaps) ++
@@ -432,13 +432,13 @@ clipPathContent = choose [parsePath, parseRect, parseCircle, parseEllipse, parse
 --------------------------------------------------------------------------------------
 -- | Parse \<image\>, see <http://www.w3.org/TR/SVG/struct.html#ImageElement>
 parseImage :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseImage = tagName "image" imageAttrs $
+parseImage = tagName "{http://www.w3.org/2000/svg}image" imageAttrs $
   \(ca,cpa,gea,xlink,pa,class_,style,ext,ar,tr,x,y,w,h) ->
   do return $ Leaf (id1 ca) mempty mempty
 
 -- | Parse \<text\>, see <http://www.w3.org/TR/SVG/text.html#TextElement>
 parseText :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseText = tagName "text" textAttrs $
+parseText = tagName "{http://www.w3.org/2000/svg}text" textAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,la,x,y,dx,dy,rot,textlen) ->
   do t <- orE contentMaybe parseTSpan
      return $ Leaf (id1 ca) mempty mempty
@@ -449,7 +449,7 @@ parseText = tagName "text" textAttrs $
          x="1551.4218"
          y="1056.9836" /> -}
 
-parseTSpan = tagName "tspan" ignoreAttrs $
+parseTSpan = tagName "{http://www.w3.org/2000/svg}tspan" ignoreAttrs $
    \_ -> do c <- content  -- \(role,id_,x,y) ->
             return ""
 
@@ -463,7 +463,7 @@ parseTSpan = tagName "tspan" ignoreAttrs $
 -- example: <linearGradient id="SVGID_2_" gradientUnits="userSpaceOnUse" x1="68.2461" y1="197.6797"
 --           x2="52.6936" y2="237.5337" gradientTransform="matrix(1 0 0 -1 -22.5352 286.4424)">
 parseLinearGradient :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseLinearGradient = tagName "linearGradient" linearGradAttrs $
+parseLinearGradient = tagName "{http://www.w3.org/2000/svg}linearGradient" linearGradAttrs $
   \(cpa,ca,pa,xlink,class_,style,ext,x1,y1,x2,y2,gradientUnits,gradientTransform,spreadMethod) ->
   do gs <- many gradientContent
      let stops :: [CSSMap -> [GradientStop]]
@@ -480,7 +480,7 @@ gradientContent = choose
 
 -- | Parse \<radialGradient\>, see <http://www.w3.org/TR/SVG/pservers.html#RadialGradientElement>
 parseRadialGradient :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseRadialGradient = tagName "radialGradient" radialGradAttrs $
+parseRadialGradient = tagName "{http://www.w3.org/2000/svg}radialGradient" radialGradAttrs $
   \(cpa,ca,pa,xlink,class_,style,ext,cx,cy,r,fx,fy,gradientUnits,gradientTransform,spreadMethod) ->
   do gs <- many gradientContent
      let stops :: [CSSMap -> [GradientStop]]
@@ -499,13 +499,13 @@ getTexture :: Tag -> (CSSMap -> [GradientStop])
 getTexture (Stop stops) = stops . (\css -> (H.empty, css, H.empty))
 
 -- | Parse \<set\>, see <http://www.w3.org/TR/SVG/animate.html#SetElement>
-parseSet = tagName "set" setAttrs $
+parseSet = tagName "{http://www.w3.org/2000/svg}set" setAttrs $
    \(ca,pa,xlink) ->
    do return $ Leaf (id1 ca) mempty mempty -- "set" ignored so far
 
 -- | Parse \<stop\>, see <http://www.w3.org/TR/SVG/pservers.html#StopElement>
 --  e.g. <stop  offset="0.4664" style="stop-color:#000000;stop-opacity:0.8"/>
-parseStop = tagName "stop" stopAttrs $
+parseStop = tagName "{http://www.w3.org/2000/svg}stop" stopAttrs $
    \(ca,pa,xlink,class_,style,offset) ->
    do let st hmaps = (parseStyles style empty3) ++
                      (parsePA pa empty3) ++
@@ -543,13 +543,13 @@ isOpacity _           = False
 ------------------------------------------------------o	----------------------------------
 -- | Parse \<desc\>, see <http://www.w3.org/TR/SVG/struct.html#DescriptionAndTitleElements>
 parseDesc :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseDesc = tagName "desc" descAttrs
+parseDesc = tagName "{http://www.w3.org/2000/svg}desc" descAttrs
    $ \(ca,class_,style) ->
    do desc <- content
       return $ Leaf (id1 ca) mempty mempty
 
 -- | Parse \<title\>, see <http://www.w3.org/TR/SVG/struct.html#DescriptionAndTitleElements>
-parseTitle = tagName "title" descAttrs
+parseTitle = tagName "{http://www.w3.org/2000/svg}title" descAttrs
    $ \(ca,class_,style) ->
    do title <- content
       return $ Leaf (id1 ca) mempty mempty
@@ -572,7 +572,7 @@ parseTitle = tagName "title" descAttrs
 --  \</metadata\>
 -- @
 --
-parseMetaData = tagName "metadata" ignoreAttrs
+parseMetaData = tagName "{http://www.w3.org/2000/svg}metadata" ignoreAttrs
    $ \_ ->
    do meta <- many metaContent
       return $ Leaf Nothing mempty mempty
@@ -673,7 +673,7 @@ parsePathEffect = tagName "{http://www.inkscape.org/namespaces/inkscape}path-eff
 
 -- | Parse \<pattern\>, see <http://www.w3.org/TR/SVG/pservers.html#PatternElement>
 parsePattern :: MonadThrow m => Consumer Event m (Maybe Tag)
-parsePattern = tagName "pattern" patternAttrs $
+parsePattern = tagName "{http://www.w3.org/2000/svg}pattern" patternAttrs $
   \(cpa,ca,pa,class_,style,ext,view,ar,x,y,w,h,pUnits,pCUnits,pTrans) ->
   do insideSym <- many patternContent
      return $ Leaf (id1 ca) mempty mempty
@@ -682,7 +682,7 @@ patternContent = choose [parseImage]
 
 -- | Parse \<filter\>, see <http://www.w3.org/TR/SVG/filters.html#FilterElement>
 parseFilter :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseFilter = tagName "filter" filterAttrs $
+parseFilter = tagName "{http://www.w3.org/2000/svg}filter" filterAttrs $
   \(ca,pa,xlink,class_,style,ext,x,y,w,h,filterRes,filterUnits,primUnits) ->
   do insideSym <- many filterContent
      return $ Leaf (id1 ca) mempty mempty
@@ -698,97 +698,97 @@ filterContent = choose [ parseFeGaussianBlur,
 
 -- | Parse \<feBlend\>, see <http://www.w3.org/TR/SVG/filters.html#feBlendElement>
 parseFeBlend :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseFeBlend = tagName "feBlend" feBlendAttrs $
+parseFeBlend = tagName "{http://www.w3.org/2000/svg}feBlend" feBlendAttrs $
    \(ca,pa,fpa,class_,style,in1,in2,mode) ->
    do return $ Leaf (id1 ca) mempty mempty
 
 -- | Parse \<feColorMatrix\>, see <http://www.w3.org/TR/SVG/filters.html#feColorMatrixElement>
 parseFeColorMatrix :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseFeColorMatrix = tagName "feColorMatrix" feColorMatrixAttrs $
+parseFeColorMatrix = tagName "{http://www.w3.org/2000/svg}feColorMatrix" feColorMatrixAttrs $
    \(ca,pa,fpa,class_,style,in1,type1,values) ->
    do return $ Leaf (id1 ca) mempty mempty
 
 -- | Parse \<feComponentTransfer\>, see <http://www.w3.org/TR/SVG/filters.html#feComponentTransferElement>
 parseFeComponentTransfer :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseFeComponentTransfer = tagName "feComponentTransfer" feComponentTransferAttrs $
+parseFeComponentTransfer = tagName "{http://www.w3.org/2000/svg}feComponentTransfer" feComponentTransferAttrs $
    \(ca,pa,fpa,class_,style,in1) ->
    do return $ Leaf (id1 ca) mempty mempty
 
 -- | Parse \<feComposite\>, see <http://www.w3.org/TR/SVG/filters.html#feCompositeElement>
 parseFeComposite :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseFeComposite = tagName "feComposite" feCompositeAttrs $
+parseFeComposite = tagName "{http://www.w3.org/2000/svg}feComposite" feCompositeAttrs $
    \(ca,pa,fpa,class_,style,in1,in2,operator,k1,k2,k3,k4) ->
    do return $ Leaf (id1 ca) mempty mempty
 
 -- | Parse \<feConvolveMatrix\>, see <http://www.w3.org/TR/SVG/filters.html#feConvolveMatrixElement>
 parseFeConvolveMatrix :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseFeConvolveMatrix = tagName "feConvolveMatrix" feConvolveMatrixAttrs $
+parseFeConvolveMatrix = tagName "{http://www.w3.org/2000/svg}feConvolveMatrix" feConvolveMatrixAttrs $
    \(ca,pa,fpa,class_,style,order,km,d,bias,tx,ty,em,ku,par) ->
    do return $ Leaf (id1 ca) mempty mempty
 
 -- | Parse \<feDiffuseLighting\>, see <http://www.w3.org/TR/SVG/filters.html#feDiffuseLightingElement>
 parseFeDiffuseLighting :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseFeDiffuseLighting = tagName "feDiffuseLighting" feDiffuseLightingAttrs $
+parseFeDiffuseLighting = tagName "{http://www.w3.org/2000/svg}feDiffuseLighting" feDiffuseLightingAttrs $
    \(ca,pa,fpa,class_,style,in1,surfaceScale,diffuseConstant,kuLength) ->
    do return $ Leaf (id1 ca) mempty mempty
 
 -- | Parse \<feDisplacementMap\>, see <http://www.w3.org/TR/SVG/filters.html#feDisplacementMapElement>
 parseFeDisplacementMap :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseFeDisplacementMap = tagName "feDisplacementMap" feDisplacementMapAttrs $
+parseFeDisplacementMap = tagName "{http://www.w3.org/2000/svg}feDisplacementMap" feDisplacementMapAttrs $
    \(ca,pa,fpa,class_,style,in1,in2,sc,xChan,yChan) ->
    do return $ Leaf (id1 ca) mempty mempty
 
 -- | Parse \<feFlood\>, see <http://www.w3.org/TR/SVG/filters.html#feFloodElement>
 parseFeFlood :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseFeFlood = tagName "feFlood" feFloodAttrs $
+parseFeFlood = tagName "{http://www.w3.org/2000/svg}feFlood" feFloodAttrs $
    \(ca,pa,fpa,class_,style) ->
    do return $ Leaf (id1 ca) mempty mempty
 
 -- | Parse \<feGaussianBlur\>, see <http://www.w3.org/TR/SVG/filters.html#feGaussianBlurElement>
 parseFeGaussianBlur :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseFeGaussianBlur = tagName "feGaussianBlur" feGaussianBlurAttrs $
+parseFeGaussianBlur = tagName "{http://www.w3.org/2000/svg}feGaussianBlur" feGaussianBlurAttrs $
    \(ca,pa,fpa,class_,style,in1,stdDeviation) ->
    do return $ Leaf (id1 ca) mempty mempty
 
 -- | Parse \<feImage\>, see <http://www.w3.org/TR/SVG/filters.html#feImageElement>
 parseFeImage :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseFeImage = tagName "feImage" feImageAttrs $
+parseFeImage = tagName "{http://www.w3.org/2000/svg}feImage" feImageAttrs $
    \(ca,pa,fpa,xlibk,class_,style,ext,par) ->
    do return $ Leaf (id1 ca) mempty mempty
 
 -- | Parse \<feMerge\>, see <http://www.w3.org/TR/SVG/filters.html#feMergeElement>
 parseFeMerge :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseFeMerge = tagName "feMerge" feMergeAttrs $
+parseFeMerge = tagName "{http://www.w3.org/2000/svg}feMerge" feMergeAttrs $
    \(ca,pa,fpa,class_,style) ->
    do return $ Leaf (id1 ca) mempty mempty
 
 -- | Parse \<feMorphology\>, see <http://www.w3.org/TR/SVG/filters.html#feMorphologyElement>
 parseFeMorphology :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseFeMorphology = tagName "feMorphology" feMorphologyAttrs $
+parseFeMorphology = tagName "{http://www.w3.org/2000/svg}feMorphology" feMorphologyAttrs $
    \(ca,pa,fpa,class_,style,in1,operator,radius) ->
    do return $ Leaf (id1 ca) mempty mempty
 
 -- | Parse \<feOffset\>, see <http://www.w3.org/TR/SVG/filters.html#feOffsetElement>
 parseFeOffset :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseFeOffset = tagName "feOffset" feOffsetAttrs $
+parseFeOffset = tagName "{http://www.w3.org/2000/svg}feOffset" feOffsetAttrs $
    \(ca,pa,fpa,class_,style,in1,dx,dy) ->
    do return $ Leaf (id1 ca) mempty mempty
 
 -- | Parse \<feSpecularLighting\>, see <http://www.w3.org/TR/SVG/filters.html#feSpecularLightingElement>
 parseFeSpecularLighting :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseFeSpecularLighting = tagName "feSpecularLighting" feSpecularLightingAttrs $
+parseFeSpecularLighting = tagName "{http://www.w3.org/2000/svg}feSpecularLighting" feSpecularLightingAttrs $
    \(ca,pa,fpa,class_,style,in1,surfaceScale,sc,se,ku) ->
    do return $ Leaf (id1 ca) mempty mempty
 
 -- | Parse \<feTile\>, see <http://www.w3.org/TR/SVG/filters.html#feTileElement>
 parseFeTile :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseFeTile = tagName "feTile" feTileAttrs $
+parseFeTile = tagName "{http://www.w3.org/2000/svg}feTile" feTileAttrs $
    \(ca,pa,fpa,class_,style,in1) ->
    do return $ Leaf (id1 ca) mempty mempty
 
 -- | Parse \<feTurbulence\>, see <http://www.w3.org/TR/SVG/filters.html#feTurbulenceElement>
 parseFeTurbulence :: MonadThrow m => Consumer Event m (Maybe Tag)
-parseFeTurbulence = tagName "feTurbulence" feTurbulenceAttrs $
+parseFeTurbulence = tagName "{http://www.w3.org/2000/svg}feTurbulence" feTurbulenceAttrs $
    \(ca,pa,fpa,class_,style,in1,in2,mode) ->
    do return $ Leaf (id1 ca) mempty mempty
 
