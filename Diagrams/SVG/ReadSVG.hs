@@ -475,7 +475,7 @@ parseLinearGradient = tagName "{http://www.w3.org/2000/svg}linearGradient" linea
                                                        ((parseMaybeDouble x2) ^& (parseMaybeDouble y2)) GradPad)  )
 
 gradientContent = choose
-     [parseStop, parseSet,
+     [parseStop, parseMidPointStop, parseSet,
       parseDesc, parseMetaData, parseTitle] -- descriptive Elements (rarely used here, so tested at the end)
 
 -- | Parse \<radialGradient\>, see <http://www.w3.org/TR/SVG/pservers.html#RadialGradientElement>
@@ -510,6 +510,13 @@ parseStop = tagName "{http://www.w3.org/2000/svg}stop" stopAttrs $
    do let st hmaps = (parseStyles style empty3) ++
                      (parsePA pa empty3) ++
                      (cssStylesFromMap hmaps "stop" (id1 ca) class_)
+      return $ Stop (\hmaps -> mkStops [getStopTriple (parseMaybeDouble offset) (st hmaps)])
+
+parseMidPointStop = tagName "{http://www.w3.org/2000/svg}midPointStop" stopAttrs $
+   \(ca,pa,xlink,class_,style,offset) ->
+   do let st hmaps = (parseStyles style empty3) ++
+                     (parsePA pa empty3) ++
+                     (cssStylesFromMap hmaps "midPointStop" (id1 ca) class_)
       return $ Stop (\hmaps -> mkStops [getStopTriple (parseMaybeDouble offset) (st hmaps)])
 
 empty3 = (H.empty,H.empty,H.empty)
