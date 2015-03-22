@@ -255,7 +255,7 @@ parseG = tagName "{http://www.w3.org/2000/svg}g" gAttrs
    $ \(cpa,ca,gea,pa,class_,style,ext,tr) ->
    do insideGs <- many gContent
       let st hmaps = (parseStyles style hmaps) ++
-                     -- (parsePA  pa  hmaps) ++
+                     (parsePA  pa  hmaps) ++
                      (cssStylesFromMap hmaps "g" (id1 ca) class_)
       return $ SubTree True (id1 ca)
                             Nothing
@@ -278,7 +278,7 @@ parseDefs = tagName "{http://www.w3.org/2000/svg}defs" gAttrs $
    \(cpa,ca,gea,pa,class_,style,ext,tr) ->
    do insideDefs <- many gContent
       let st hmaps = (parseStyles style hmaps) ++
-                     -- (parsePA pa hmaps) ++
+                     (parsePA pa hmaps) ++
                      (cssStylesFromMap hmaps "defs" (id1 ca) class_)
       return $ SubTree False (id1 ca)
                              Nothing
@@ -312,7 +312,7 @@ parseSymbol = tagName "{http://www.w3.org/2000/svg}symbol" symbolAttrs $
    \(ca,gea,pa,class_,style,ext,ar,viewbox) ->
    do insideSym <- many gContent
       let st hmaps = (parseStyles style hmaps) ++
-                     -- (parsePA  pa  hmaps) ++
+                     (parsePA  pa  hmaps) ++
                      (cssStylesFromMap hmaps "symbol" (id1 ca) class_)
       return $ SubTree False (id1 ca)
                              (parseViewBox viewbox)
@@ -327,10 +327,10 @@ parseUse = tagName "{http://www.w3.org/2000/svg}use" useAttrs
    $ \(ca,cpa,gea,pa,xlink,class_,style,ext,tr,x,y,w,h) ->
    do -- insideUse <- many useContent
       let st hmaps = (parseStyles style hmaps) ++
-                     -- (parsePA  pa  hmaps) ++
+                     (parsePA  pa  hmaps) ++
                      (cssStylesFromMap hmaps "use" (id1 ca) class_)
       return $ Reference (id1 ca) (xlinkHref xlink) (parseToDouble w, parseToDouble h)
-                         (\maps -> (translate (r2 (p x,p y))) . (applyTr (parseTr tr))) -- . (applyStyleSVG st maps))
+                         (\maps -> (translate (r2 (p x,p y))) . (applyTr (parseTr tr)) . (applyStyleSVG st maps))
 
 useContent :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => Consumer Event m (Maybe (Tag b n))
 useContent = choose [parseDesc,parseTitle] -- descriptive elements
@@ -352,7 +352,7 @@ parseRect :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Ta
 parseRect = tagName "{http://www.w3.org/2000/svg}rect" rectAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,ar,tr,x,y,w,h,rx,ry) -> do
     let st hmaps = (parseStyles style hmaps) ++
-                   -- (parsePA  pa  hmaps) ++
+                   (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "rect" (id1 ca) class_)
     return $ Leaf (id1 ca)
                   (path x y w h rx ry tr)
@@ -370,7 +370,7 @@ parseCircle :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (
 parseCircle = tagName "{http://www.w3.org/2000/svg}circle" circleAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,r,cx,cy) -> do
     let st hmaps = (parseStyles style hmaps) ++
-                   -- (parsePA  pa  hmaps) ++
+                   (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "circle" (id1 ca) class_)
     return $ Leaf (id1 ca)
                   (path cx cy r tr)
@@ -384,7 +384,7 @@ parseEllipse :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe 
 parseEllipse = tagName "{http://www.w3.org/2000/svg}ellipse" ellipseAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,rx,ry,cx,cy) -> do
     let st hmaps = (parseStyles style hmaps) ++
-                   -- (parsePA  pa  hmaps) ++
+                   (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "ellipse" (id1 ca) class_)
     return $ Leaf (id1 ca)
                   (path cx cy rx ry tr)
@@ -398,7 +398,7 @@ parseLine :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Ta
 parseLine = tagName "{http://www.w3.org/2000/svg}line" lineAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,x1,y1,x2,y2) -> do
     let st hmaps = (parseStyles style hmaps) ++
-                   -- (parsePA  pa  hmaps) ++
+                   (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "line" (id1 ca) class_)
     return $ Leaf (id1 ca)
                   (path x1 y1 x2 y2 tr)
@@ -415,7 +415,7 @@ parsePolyLine :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe
 parsePolyLine = tagName "{http://www.w3.org/2000/svg}polyline" polygonAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,points) -> do
     let st hmaps = (parseStyles style hmaps) ++
-                   -- (parsePA  pa  hmaps) ++
+                   (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "polyline" (id1 ca) class_)
     let ps = parsePoints (fromJust points)
     return $ Leaf (id1 ca)
@@ -435,7 +435,7 @@ parsePolygon :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe 
 parsePolygon = tagName "{http://www.w3.org/2000/svg}polygon" polygonAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,points) -> do
     let st hmaps = (parseStyles style hmaps) ++
-                   -- (parsePA  pa  hmaps) ++
+                   (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "polygon" (id1 ca) class_)
     let ps = parsePoints (fromJust points)
     return $ Leaf (id1 ca)
@@ -456,7 +456,7 @@ parsePath :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Ta
 parsePath = tagName "{http://www.w3.org/2000/svg}path" pathAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,d,pathLength) -> do
     let st hmaps = (parseStyles style hmaps) ++
-                   -- (parsePA  pa  hmaps) ++
+                   (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "path" (id1 ca) class_)
     return $ Leaf (id1 ca)
                   (path d tr)
@@ -471,7 +471,7 @@ parseClipPath = tagName "{http://www.w3.org/2000/svg}clipPath" clipPathAttrs $
   \(cpa,ca,pa,class_,style,ext,ar,viewbox) -> do
     insideClipPath <- many clipPathContent
     let st hmaps = (parseStyles style hmaps) ++
-                   -- (parsePA  pa  hmaps) ++
+                   (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "clipPath" (id1 ca) class_)
     return $ SubTree False (id1 ca) 
                      (parseViewBox viewbox)
@@ -562,14 +562,14 @@ parseSet = tagName "{http://www.w3.org/2000/svg}set" setAttrs $
 parseStop = tagName "{http://www.w3.org/2000/svg}stop" stopAttrs $
    \(ca,pa,xlink,class_,style,offset) ->
    do let st hmaps = (parseStyles style empty3) ++
-                     -- (parsePA pa empty3) ++
+                     (parsePA pa empty3) ++
                      (cssStylesFromMap hmaps "stop" (id1 ca) class_)
       return $ Stop (\hmaps -> mkStops [getStopTriple (parseMaybeDouble offset) (st hmaps)])
 
 parseMidPointStop = tagName "{http://www.w3.org/2000/svg}midPointStop" stopAttrs $
    \(ca,pa,xlink,class_,style,offset) ->
    do let st hmaps = (parseStyles style empty3) ++
-                     -- (parsePA pa empty3) ++
+                     (parsePA pa empty3) ++
                      (cssStylesFromMap hmaps "midPointStop" (id1 ca) class_)
       return $ Stop (\hmaps -> mkStops [getStopTriple (parseMaybeDouble offset) (st hmaps)])
 

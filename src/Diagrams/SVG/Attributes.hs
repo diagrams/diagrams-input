@@ -383,13 +383,13 @@ data PresentationAttributes =
       , writingMode :: Maybe Text
       }
 
---  parsePA :: (Read a, RealFloat a, RealFloat n) => PresentationAttributes -> HashMaps b n -> [(SVGStyle n a)]
+parsePA :: (RealFloat n, RealFloat a, Read a) => PresentationAttributes -> HashMaps b n -> [(SVGStyle n a)]
 parsePA pa (nodes,_,grad) = l
   where l = catMaybes
-         [-- (parseTempl (styleFillVal grad))      (fill pa),
+         [(parseTempl (styleFillVal grad))      (fill pa),
           (parseTempl styleFillRuleVal)         (fillRuleSVG pa),
           (parseTempl styleFillOpacityVal)      (fillOpacity pa),
---          (parseTempl (styleStrokeVal grad))    (strokeSVG pa),
+          (parseTempl (styleStrokeVal grad))    (strokeSVG pa),
           (parseTempl styleStrokeWidth)         (strokeWidth pa),
           (parseTempl styleStrokeLineCapVal)    (strokeLinecap pa),
           (parseTempl styleStrokeLineJoinVal)   (strokeLinejoin pa),
@@ -439,7 +439,7 @@ parseStyles text hmaps = either (const []) id $
 
 -- parseStyleAttr :: (Read a, RealFloat a, RealFloat n) => HashMaps b n -> Parser (SVGStyle n a)
 parseStyleAttr (ns,css,grad) =
-  AT.choice [styleFillRule, styleStrokeWidth, styleStrokeDashArray, -- styleFill grad, styleStroke grad, styleStopColor,
+  AT.choice [styleFillRule, styleStrokeWidth, styleStrokeDashArray, styleFill grad, styleStroke grad, styleStopColor,
              styleStopOpacity, styleFillOpacity,
              styleStrokeLineCap, styleStrokeLineJoin, styleStrokeMiterLimit, styleClipPath ns]
 
@@ -497,15 +497,15 @@ initialStyles = lwL 1 . fc black . lineCap LineCapButt . lineJoin LineJoinMiter 
 --                 (HashMaps b n -> [SVGStyle n a]) -> HashMaps b n -> a -> a
 applyStyleSVG stylesFromMap hmap = compose (map getStyles (stylesFromMap hmap))
 
-getStyles :: (RealFloat n, HasStyle a, V a ~ V2, n ~ N a, Typeable n) => SVGStyle n a -> a -> a
--- getStyles (Fill c) = fcA c
--- getStyles (FillTex x) = fillTexture x
+-- getStyles :: (RealFloat n, HasStyle a, V a ~ V2, n ~ N a, Typeable n) => SVGStyle n a -> c -> c
+getStyles (Fill c) = fcA c
+getStyles (FillTex x) = fillTexture x
 getStyles (FillOpacity d) = id -- we currently don't differentiate between fill opacity and stroke opacity
 getStyles (FillRule Even_Odd) = fillRule EvenOdd
 getStyles (FillRule Nonzero) = id
 getStyles (FillRule Inherit) = id
--- getStyles (Stroke x) = lcA x
--- getStyles (StrokeTex x) = lineTexture x
+getStyles (Stroke x) = lcA x
+getStyles (StrokeTex x) = lineTexture x
 getStyles (StrokeWidth (Len x)) = lwL $ fromRational $ toRational x
 getStyles (StrokeWidth (Percent x)) = lwG x
 getStyles (StrokeLineCap x) = lineCap x
@@ -525,7 +525,7 @@ styleFill hmap =
      AT.skipSpace
      styleFillVal hmap
 
-styleFillVal gradients = AT.choice [ styleFillColourVal ] -- , styleFillTexURL gradients ]
+styleFillVal gradients = AT.choice [ styleFillColourVal, styleFillTexURL gradients ]
 
 styleFillColourVal =
   do c <- AT.choice [colorRRGGBB, colorRGB, colorString, colorRGBPercent, colorHSLPercent, colorNone]
