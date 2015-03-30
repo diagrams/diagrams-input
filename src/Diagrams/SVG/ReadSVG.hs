@@ -81,9 +81,9 @@ import Diagrams.TwoD.Ellipse
 import Diagrams.TwoD.Size
 import Diagrams.TwoD.Types
 import Diagrams.SVG.Arguments
-import Diagrams.SVG.Attributes 
+import Diagrams.SVG.Attributes
 import Diagrams.SVG.Path (commands, commandsToTrails, PathCommand(..))
-import Diagrams.SVG.Tree 
+import Diagrams.SVG.Tree
 import Filesystem.Path (FilePath)
 import Prelude hiding (FilePath)
 import Text.XML.Stream.Parse hiding (parseText)
@@ -98,7 +98,7 @@ import Data.Typeable (Typeable)
 --
 -- @
 -- \{-\# LANGUAGE OverloadedStrings \#-\}
--- 
+--
 -- module Main where
 -- import Diagrams.SVG.ReadSVG
 -- import Diagrams.Prelude
@@ -112,14 +112,14 @@ import Data.Typeable (Typeable)
 --    mainWith $ diagramFromSVG
 -- @
 --
-readSVGFile :: (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n) => 
+readSVGFile :: (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n) =>
                FilePath -> IO (Either String (Diagram b))
 readSVGFile fp = runResourceT $ runEitherT $ do
   tree <- lift (parseFile def fp $$ force "error in parseSVG" parseSVG)
   right $ diagram tree
 
-diagram :: (RealFloat n, V b ~ V2, n ~ N b) => Tag b n -> Diagram b
-diagram tr = (insertRefs (nmap,cssmap,gradmap) tr) # scaleY (-1)
+diagram :: (RealFloat n, V b ~ V2, n ~ N b, Typeable n) => Tag b n -> Diagram b
+diagram tr = (insertRefs (nmap,cssmap,gradmap) tr) # scaleY (-1) # initialStyles
   where
     (ns,css,grad) = nodes ([],[],[]) tr
     nmap    = H.fromList ns -- needed because of the use-tag and clipPath
@@ -127,7 +127,7 @@ diagram tr = (insertRefs (nmap,cssmap,gradmap) tr) # scaleY (-1)
     gradmap = H.fromList $ map (\(id1,f) -> (id1, f cssmap)) grad
 
 -- | preserveAspectRatio is needed to fit an image into a frame that has a different aspect ratio than the image
---  (e.g. 16:10 against 4:3). 
+--  (e.g. 16:10 against 4:3).
 --  SVG embeds images the same way: <http://www.w3.org/TR/SVG11/coords.html#PreserveAspectRatioAttribute>
 --
 -- > import Graphics.SVGFonts
@@ -148,7 +148,7 @@ diagram tr = (insertRefs (nmap,cssmap,gradmap) tr) # scaleY (-1)
 -- > sliceY = (text' "slice") === (portraitSlice2 0 0 ||| portraitSlice2 0 0.5 ||| portraitSlice2 0 1)
 -- > im = (text' "Image to fit") === (portrait (PAR (AlignXY 0 0) Meet) 123 456)
 -- > viewport1 = (text' "Viewport1") === (rect 200 100)
--- > viewport2 = (text' "Viewport2") === (rect 100 200) 
+-- > viewport2 = (text' "Viewport2") === (rect 100 200)
 -- > imageAndViewports = im === viewport1 === viewport2
 -- >
 -- > par = imageAndViewports ||| ( ( meetX ||| meetY) === ( sliceX ||| sliceY) )
@@ -165,11 +165,11 @@ preserveAspectRatio newWidth newHeight oldWidth oldHeight preserveAR image
         scaY = newWidth / oldWidth
         xPlace (PAR (AlignXY x y) Meet) i = i # scale scaX # alignBL # translateX ((newWidth  - oldWidth*scaX)*x)
         xPlace (PAR (AlignXY x y) Slice) i = i # scale scaY # alignBL # translateX ((newWidth  - oldWidth*scaX)*x)
-                                               # view (p2 (0, 0)) (r2 (newWidth, newHeight))
+--                                               # view (p2 (0, 0)) (r2 (newWidth, newHeight))
 
         yPlace (PAR (AlignXY x y) Meet) i = i # scale scaY # alignBL # translateY ((newHeight - oldHeight*scaY)*y)
         yPlace (PAR (AlignXY x y) Slice) i = i # scale scaX # alignBL # translateY ((newHeight - oldHeight*scaY)*y)
-                                               # view (p2 (0, 0)) (r2 (newWidth, newHeight))
+--                                               # view (p2 (0, 0)) (r2 (newWidth, newHeight))
 
 ------------------------------------------------------------------------------------------------------------
 
@@ -179,7 +179,7 @@ lookUp hmap i | isJust l  = fromJust l
   where l = H.lookup i hmap
 
 -- | Evaluate the tree into a diagram by inserting references and applying clipping
-insertRefs :: (V b ~ V2, N b ~ n, RealFloat n) => 
+insertRefs :: (V b ~ V2, N b ~ n, RealFloat n) =>
               (H.HashMap Text (Tag b n), H.HashMap Text Attrs, H.HashMap Text (Texture n)) -> Tag b n -> Diagram b
 insertRefs maps (Leaf id1 path f) = f maps
 insertRefs maps (Grad _ _) = mempty
@@ -188,7 +188,7 @@ insertRefs maps (Reference selfId id1 (w,h) styles)
     | (isJust w && (fromJust w) <= 0) || (isJust h && (fromJust h) <= 0) = mempty
     | otherwise = referencedDiagram # styles maps
                                  -- # stretchViewBox (fromJust w) (fromJust h) viewboxPAR
-                                 -- # cutOutViewBox viewboxPAR  
+                                    # cutOutViewBox viewboxPAR
   where viewboxPAR = getViewboxPreserveAR subTree
         referencedDiagram = insertRefs maps (makeSubTreeVisible subTree)
         subTree = lookUp (sel1 maps) (Diagrams.SVG.Attributes.fragment id1) -- :: Tag
@@ -198,7 +198,7 @@ insertRefs maps (Reference selfId id1 (w,h) styles)
 insertRefs maps (SubTree True id1 viewbox ar styles children) =
     subdiagram # styles maps
              --  # stretchViewBox (Diagrams.TwoD.Size.width subdiagram) (Diagrams.TwoD.Size.height subdiagram) (viewbox, ar)
---               # cutOutViewBox (viewbox, ar)
+               # cutOutViewBox (viewbox, ar)
   where subdiagram = mconcat (map (insertRefs maps) children)
 
 insertRefs maps (SubTree False _ _ _ _ _) = mempty
@@ -214,7 +214,7 @@ stretchViewBox w h ((Just (minX,minY,width,height), Nothing))  =
                                     preserveAspectRatio w h width height (PAR (AlignXY 0.5 0.5) Meet)
 stretchViewBox w h _ = id
 
-cutOutViewBox (Just (minX,minY,width,height), _) = (view (p2 (minX, minY)) (r2 ((width - minX), (height - minY))) )
+cutOutViewBox (Just (minX,minY,width,height), _) = rectEnvelope (p2 (minX, minY)) (r2 ((width - minX), (height - minY)))
                                                  --  (clipBy (rect (width - minX) (height - minY)))
 cutOutViewBox _ = id
 
@@ -267,7 +267,7 @@ gContent :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Tag
 gContent = choose -- the likely most common are checked first
      [parsePath, parseG, parseRect, parseCircle, parseEllipse, parseLine, parsePolyLine, parsePolygon,
       parseUse, parseSymbol, parseStyle, parseDefs, -- structural elements
-      parseText, parseClipPath, parseLinearGradient, parseRadialGradient, parseImage, parseFilter, 
+      parseText, parseClipPath, parseLinearGradient, parseRadialGradient, parseImage, parseFilter,
       parsePattern, parseSwitch, parsePerspective,
       parseDesc, parseMetaData, parseTitle, parsePathEffect] -- descriptive Elements
 
@@ -322,7 +322,7 @@ parseSymbol = tagName "{http://www.w3.org/2000/svg}symbol" symbolAttrs $
 
 -----------------------------------------------------------------------------------
 -- | Parse \<use\>, see <http://www.w3.org/TR/SVG/struct.html#UseElement>
-parseUse :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => Consumer Event m (Maybe (Tag b n))
+parseUse :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Typeable n) => Consumer Event m (Maybe (Tag b n))
 parseUse = tagName "{http://www.w3.org/2000/svg}use" useAttrs
    $ \(ca,cpa,gea,pa,xlink,class_,style,ext,tr,x,y,w,h) ->
    do -- insideUse <- many useContent
@@ -473,7 +473,7 @@ parseClipPath = tagName "{http://www.w3.org/2000/svg}clipPath" clipPathAttrs $
     let st hmaps = (parseStyles style hmaps) ++
                    (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "clipPath" (id1 ca) class_)
-    return $ SubTree False (id1 ca) 
+    return $ SubTree False (id1 ca)
                      (parseViewBox viewbox)
                      (parsePreserveAR ar)
                      (applyStyleSVG st)
@@ -485,15 +485,16 @@ clipPathContent = choose [parseRect, parseCircle, parseEllipse, parseLine, parse
 
 --------------------------------------------------------------------------------------
 -- | Parse \<image\>, see <http://www.w3.org/TR/SVG/struct.html#ImageElement>
+-- <image width="28" xlink:href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAADCAYAAACAjW/aAAAABmJLR0QA/wD/AP+gvaeTAAAAB3RJTUUH2AkMDx4ErQ9V0AAAAClJREFUGJVjYMACGhoa/jMwMPyH0kQDYvQxYpNsaGjAyibCQrL00dSHACypIHXUNrh3AAAAAElFTkSuQmCC" height="3"/>
 parseImage :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => Consumer Event m (Maybe (Tag b n))
 parseImage = tagName "{http://www.w3.org/2000/svg}image" imageAttrs $
-  \(ca,_,_,_,_,_,_,_,_,_,_,_,_,_) -> -- (ca,cpa,gea,xlink,pa,class_,style,ext,ar,tr,x,y,w,h) ->
-  do return $ Leaf (id1 ca) mempty mempty
+  \(ca,cpa,gea,xlink,pa,class_,style,ext,ar,tr,x,y,w,h) ->
+  do return $ Leaf (id1 ca) mempty mempty -- (xlinkHref xlink)
 
 -- | Parse \<text\>, see <http://www.w3.org/TR/SVG/text.html#TextElement>
 parseText :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => Consumer Event m (Maybe (Tag b n))
 parseText = tagName "{http://www.w3.org/2000/svg}text" textAttrs $
-  \(_,ca,_,_,_,_,_,_,_,_,_,_,_,_,_) -> -- (cpa,ca,gea,pa,class_,style,ext,tr,la,x,y,dx,dy,rot,textlen) ->
+  \(cpa,ca,gea,pa,class_,style,ext,tr,la,x,y,dx,dy,rot,textlen) ->
   do t <- orE contentMaybe parseTSpan
      return $ Leaf (id1 ca) mempty mempty
 
@@ -574,7 +575,7 @@ parseMidPointStop = tagName "{http://www.w3.org/2000/svg}midPointStop" stopAttrs
       return $ Stop (\hmaps -> mkStops [getStopTriple (parseMaybeDouble offset) (st hmaps)])
 
 empty3 = (H.empty,H.empty,H.empty)
-	  
+
 -- (An opaque color, a stop fraction, an opacity).
 -- mkStops :: [(Colour Double, Double, Double)] -> [GradientStop]
 -- mkStops [(gray, 0, 1), (white, 0.5, 1), (purple, 1, 1)]
@@ -603,7 +604,7 @@ isOpacity _           = False
 -- descriptive elements
 ------------------------------------------------------o	----------------------------------
 -- | Parse \<desc\>, see <http://www.w3.org/TR/SVG/struct.html#DescriptionAndTitleElements>
-parseDesc :: (MonadThrow m, Metric (V b), RealFloat (N b)) => Consumer Event m (Maybe (Tag b n))
+-- parseDesc :: (MonadThrow m, Metric (V b), RealFloat (N b)) => Consumer Event m (Maybe (Tag b n))
 parseDesc = tagName "{http://www.w3.org/2000/svg}desc" descAttrs
    $ \(ca,class_,style) ->
    do desc <- content
@@ -639,6 +640,7 @@ parseMetaData = tagName "{http://www.w3.org/2000/svg}metadata" ignoreAttrs
    do -- meta <- many metaContent
       return $ Leaf Nothing mempty mempty
 
+-- metaContent :: (MonadThrow m, Metric (V b), RealFloat (N b)) => Consumer Event m (Maybe (Tag b n))
 metaContent = choose [parseRDF] -- extend if needed
 
 -- parseRDF :: (MonadThrow m, Metric (V b), RealFloat (N b)) => Consumer Event m (Maybe (Tag b n))
@@ -647,7 +649,7 @@ parseRDF = tagName "{http://www.w3.org/1999/02/22-rdf-syntax-ns#}RDF" ignoreAttr
           do -- c <- parseWork
              return $ Leaf Nothing mempty mempty
 
-parseWork :: (MonadThrow m, Metric (V b), RealFloat (N b)) => Consumer Event m (Maybe (Tag b n))
+-- parseWork :: (MonadThrow m, Metric (V b), RealFloat (N b)) => Consumer Event m (Maybe (Tag b n))
 parseWork = tagName "{http://creativecommons.org/ns#}Work" ignoreAttrs
    $ \_ ->
    do -- c <- many workContent
@@ -727,7 +729,7 @@ parseGrid = tagName "{http://www.inkscape.org/namespaces/inkscape}grid" ignoreAt
 -}
 
 parsePerspective = tagName "{http://www.inkscape.org/namespaces/inkscape}perspective" perspectiveAttrs
-   $ \(typ,vp_x,vp_y,vp_z,persp3d_origin,id_) -> 
+   $ \(typ,vp_x,vp_y,vp_z,persp3d_origin,id_) ->
      return $ Leaf (Just "") mempty mempty
 
 parsePathEffect = tagName "{http://www.inkscape.org/namespaces/inkscape}path-effect" ignoreAttrs
@@ -736,19 +738,21 @@ parsePathEffect = tagName "{http://www.inkscape.org/namespaces/inkscape}path-eff
 -- sceletons
 
 -- | Parse \<pattern\>, see <http://www.w3.org/TR/SVG/pservers.html#PatternElement>
+parsePattern :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Tag b n))
 parsePattern = tagName "{http://www.w3.org/2000/svg}pattern" patternAttrs $
   \(cpa,ca,pa,class_,style,ext,view,ar,x,y,w,h,pUnits,pCUnits,pTrans) ->
-  do insidePattern <- many patternContent
-     return $ Leaf (id1 ca) mempty mempty
+  do c <- content -- insidePattern <- many patternContent
+     return $ Leaf (Just "") mempty mempty
 
-patternContent = choose [] -- [parseImage]
+patternContent :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Tag b n))
+patternContent = choose [parseImage]
 
 -- | Parse \<filter\>, see <http://www.w3.org/TR/SVG/filters.html#FilterElement>
 parseFilter = tagName "{http://www.w3.org/2000/svg}filter" filterAttrs $
   \(ca,pa,xlink,class_,style,ext,x,y,w,h,filterRes,filterUnits,primUnits) ->
-  do -- insideSym <- many filterContent
+  do -- insideFilter <- many filterContent
      return $ Leaf (id1 ca) mempty mempty
-{-
+
 filterContent = choose [ parseFeGaussianBlur,
   parseFeBlend,parseFeColorMatrix,parseFeComponentTransfer,parseFeComposite,parseFeConvolveMatrix, -- filter primitive elments
   parseFeDiffuseLighting,parseFeDisplacementMap,parseFeFlood,parseFeImage,
@@ -826,4 +830,3 @@ parseFeTurbulence = tagName "{http://www.w3.org/2000/svg}feTurbulence" feTurbule
 ------------------------------------------------------------------------------------
 
 animationElements = []
--}

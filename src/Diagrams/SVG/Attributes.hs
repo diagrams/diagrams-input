@@ -389,8 +389,9 @@ parsePA pa (nodes,_,grad) = l
          [(parseTempl (styleFillVal grad))      (fill pa),
           (parseTempl styleFillRuleVal)         (fillRuleSVG pa),
           (parseTempl styleFillOpacityVal)      (fillOpacity pa),
+          (parseTempl styleStrokeOpacityVal)    (strokeOpacity pa),
           (parseTempl (styleStrokeVal grad))    (strokeSVG pa),
-          (parseTempl styleStrokeWidth)         (strokeWidth pa),
+          (parseTempl styleStrokeWidthVal)      (strokeWidth pa),
           (parseTempl styleStrokeLineCapVal)    (strokeLinecap pa),
           (parseTempl styleStrokeLineJoinVal)   (strokeLinejoin pa),
           (parseTempl styleStrokeMiterLimitVal) (strokeMiterlimit pa),
@@ -403,9 +404,9 @@ parsePA pa (nodes,_,grad) = l
 -- Example: style="fill:white;stroke:black;stroke-width:0.503546"
 --------------------------------------------------------------------------------------------
 
-data SVGStyle n a = Fill (AlphaColour a) | FillTex (Texture n) | FillOpacity n | FillRule FR
+data SVGStyle n a = Fill (AlphaColour a) | FillTex (Texture n) | FillOpacity Double | FillRule FR
                   | Stroke (AlphaColour a) | StrokeTex (Texture n) | StrokeWidth (LenPercent n) | StrokeLineCap LineCap
-                  | StrokeLineJoin LineJoin | StrokeMiterLimit n | StrokeDasharray [LenPercent n] | StrokeOpacity n
+                  | StrokeLineJoin LineJoin | StrokeMiterLimit n | StrokeDasharray [LenPercent n] | StrokeOpacity Double
                   | ClipPath (Path V2 n)
                   | EmptyStyle
 
@@ -440,7 +441,7 @@ parseStyles text hmaps = either (const []) id $
 -- parseStyleAttr :: (Read a, RealFloat a, RealFloat n) => HashMaps b n -> Parser (SVGStyle n a)
 parseStyleAttr (ns,css,grad) =
   AT.choice [styleFillRule, styleStrokeWidth, styleStrokeDashArray, styleFill grad, styleStroke grad, styleStopColor,
-             styleStopOpacity, styleFillOpacity,
+             styleStopOpacity, styleFillOpacity, styleStrokeOpacity,
              styleStrokeLineCap, styleStrokeLineJoin, styleStrokeMiterLimit, styleClipPath ns]
 
 -- | This function is called on every tag and returns a list of style-attributes to apply 
@@ -449,11 +450,11 @@ parseStyleAttr (ns,css,grad) =
 -- cssStylesFromMap :: (Read a, RealFloat a, RealFloat n) =>
 --                    HashMaps b n -> Text -> Maybe Text ->  Maybe Text -> [(SVGStyle n a)]
 cssStylesFromMap (ns,css,grad) tagName id_ class_ = parseStyles ( Just ( T.concat ( map f attributes ) ) ) (ns,css,grad)
-  where f (attr, val) = (attr `snoc` ':') `append` (val `snoc` ';')
-        styleFromClass cl = [H.lookup ('.' `cons` cl) css] ++ [H.lookup (tagName `append` ('.' `cons` cl)) css]
+  where f (attr, val) = (attr `Data.Text.snoc` ':') `append` (val `Data.Text.snoc` ';')
+        styleFromClass cl = [H.lookup ('.' `Data.Text.cons` cl) css] ++ [H.lookup (tagName `append` ('.' `Data.Text.cons` cl)) css]
         attributes = concat $ catMaybes
                    ( [H.lookup "*" css] ++    -- apply this style to every element
-                     (if isJust id_ then [H.lookup ('#' `cons` (fromJust id_)) css] else []) ++
+                     (if isJust id_ then [H.lookup ('#' `Data.Text.cons` (fromJust id_)) css] else []) ++
                      (concat (map styleFromClass (if isJust class_ then T.words $ fromJust class_ else [])))
                    )
 
@@ -484,7 +485,7 @@ absoluteOrRelativeIRI =
 fragment x = fromMaybe T.empty $ fmap snd (parseTempl parseIRI x) -- look only for the text after "#"
 
 -- | Inital styles, see: http://www.w3.org/TR/SVG/painting.html#FillProperty
-initialStyles = lwL 1 . fc black . lineCap LineCapButt . lineJoin LineJoinMiter -- lineMiterLimit 4
+initialStyles = lwL 0 . fc black . lineCap LineCapButt . lineJoin LineJoinMiter . lineMiterLimit 4
                -- fillRule nonzero -- TODO
                -- fillOpcacity 1 -- TODO
                -- stroke none -- TODO
@@ -493,17 +494,15 @@ initialStyles = lwL 1 . fc black . lineCap LineCapButt . lineJoin LineJoinMiter 
                -- stroke-opacity 1 #
                -- display inline
 
--- applyStyleSVG :: (RealFloat n, HasStyle a, V a ~ V2, n ~ N a, Typeable n) => 
---                 (HashMaps b n -> [SVGStyle n a]) -> HashMaps b n -> a -> a
 applyStyleSVG stylesFromMap hmap = compose (map getStyles (stylesFromMap hmap))
 
--- getStyles :: (RealFloat n, HasStyle a, V a ~ V2, n ~ N a, Typeable n) => SVGStyle n a -> c -> c
 getStyles (Fill c) = fcA c
 getStyles (FillTex x) = fillTexture x
-getStyles (FillOpacity d) = id -- we currently don't differentiate between fill opacity and stroke opacity
 getStyles (FillRule Even_Odd) = fillRule EvenOdd
 getStyles (FillRule Nonzero) = id
 getStyles (FillRule Inherit) = id
+getStyles (FillOpacity x) = Diagrams.Prelude.opacity x
+getStyles (StrokeOpacity x) = Diagrams.Prelude.opacity x -- we currently don't differentiate between fill opacity and stroke opacity
 getStyles (Stroke x) = lcA x
 getStyles (StrokeTex x) = lineTexture x
 getStyles (StrokeWidth (Len x)) = lwL $ fromRational $ toRational x
@@ -514,7 +513,6 @@ getStyles (StrokeMiterLimit x) = id
 getStyles (StrokeDasharray array) = dashingL (map dash array) 0
    where dash (Len x) = x
          dash (Percent x) = x -- TODO implement percent length
-getStyles (StrokeOpacity x) = id -- we currently don't differentiate between fill opacity and stroke opacity
 getStyles (ClipPath path) = clipBy path
 getStyles _ = id
 
@@ -584,7 +582,10 @@ styleStrokeTexURL gradients =
 styleStrokeWidth =
   do AT.skipSpace
      AT.string "stroke-width:"
-     len <- styleLength
+     styleStrokeWidthVal
+
+styleStrokeWidthVal =
+  do len <- styleLength
      return (StrokeWidth len)
 
 styleLength =
@@ -702,11 +703,11 @@ styleStrokeOpacity =
   do AT.skipSpace
      AT.string "stroke-opacity:"
      AT.skipSpace
-     styleOpacityVal
+     styleStrokeOpacityVal
 
-styleOpacityVal =
+styleStrokeOpacityVal =
   do l <- double
-     return $ FillOpacity $ (fromRational . toRational) l
+     return $ StrokeOpacity $ (fromRational . toRational) l
 
 styleStopColor =
   do AT.skipSpace
@@ -718,7 +719,7 @@ styleStopOpacity =
   do AT.skipSpace
      AT.string "stop-opacity:"
      AT.skipSpace
-     styleOpacityVal
+     styleFillOpacityVal
 
 -- To Do: Visibility, marker
 
