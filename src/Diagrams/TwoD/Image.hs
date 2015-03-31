@@ -1,7 +1,5 @@
-{-# LANGUAGE DeriveDataTypeable    #-}
 {-# LANGUAGE EmptyDataDecls        #-}
 {-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeFamilies          #-}
 {-# LANGUAGE UndecidableInstances  #-}
@@ -31,6 +29,8 @@ module Diagrams.TwoD.Image
     , uncheckedImageRef
     , raster
 --    , rasterDia
+    -- * Parsing data uri in <image>
+    , dataUriToImage
     ) where
 
 import           Control.Monad -- mplus
@@ -44,65 +44,13 @@ import           Data.Typeable        (Typeable)
 import           Diagrams.Core
 
 import           Diagrams.Attributes  (colorToSRGBA)
-import           Diagrams.TwoD.Path   (isInsideEvenOdd)
 import           Diagrams.TwoD.Shapes (rect)
 import           Diagrams.TwoD.Types
-import           Diagrams.SVG.ReadSVG (readSVGFile, InputConstraints)
-
+import           Diagrams.SVG.ReadSVG (readSVGFile, InputConstraints, image, dataUriToImage, ImageData(..),DImage(..),Embedded,External,Native,FP(..))
 import           Linear.Affine
 import           Filesystem.Path (FilePath)
 import           Filesystem.Path.CurrentOS (encodeString, decodeString)
 import           Prelude hiding (FilePath)
-
-data Embedded deriving Typeable
-data External deriving Typeable
-data Native (t :: *) deriving Typeable
-data FP b = FP FilePath
-
--- | 'ImageData' is either 'Embedded' or a reference tagged as 'External'.
---   The image data is a JuicyPixels @DynamicImage@ or a diagram that contains 
---   vector and raster graphics (e.g. SVG).
---   Additionally 'Native' is provided for external libraries to hook into.
-data ImageData t b where
-  ImageRaster :: DynamicImage -> ImageData Embedded b
-  ImageRef    :: FP b -> ImageData External b -- references also need propagated type class constraints of b
-  ImageDiagram :: Diagram b -> ImageData Embedded b
-  ImageDiagramRef :: FilePath -> ImageData External b
-  ImageNative :: t -> ImageData (Native t) b
-
--------------------------------------------------------------------------------
--- | An image primitive, the two ints are width followed by height.
---   Will typically be created by @loadImageEmb@ or @loadImageExt@ which,
---   will handle setting the width and height to the actual width and height
---   of the image.
-data DImage :: * -> * -> * -> * where
-  DImage :: ImageData t b -> Int -> Int -> Transformation V2 n -> DImage b n t
-  deriving Typeable
-
-type instance V (DImage b n a) = V2
-type instance N (DImage b n a) = n
-
-instance Fractional n => Transformable (DImage b n a) where
-  transform t1 (DImage iD w h t2) = DImage iD w h (t1 <> t2)
-
-instance Fractional n => HasOrigin (DImage b n a) where
-  moveOriginTo p = translate (origin .-. p)
-
--- | Make a 'DImage' into a 'Diagram'.
-image :: (V b ~ V2, N b ~ n, TypeableFloat n, Typeable a, Typeable b, Renderable (DImage b n a) b)
-      => DImage b n a -> QDiagram b V2 n Any
-
-image (DImage (ImageDiagram img) _ _ _) = img
-image img
-  = mkQD (Prim img)
-         (getEnvelope r)
-         (getTrace r)
-         mempty
-         (Query $ \p -> Any (isInsideEvenOdd p r))
-  where
-    r = rect (fromIntegral w) (fromIntegral h)
-    DImage _ w h _ = img
-
 
 -- | Use JuicyPixels or svg-diagrams to read an image in any format and wrap it in a 'DImage'.
 --   The width and height of the image are set to their actual values.
@@ -110,8 +58,8 @@ loadImageEmb :: InputConstraints b n => FilePath -> IO (Either String (DImage b 
 loadImageEmb path = do
   dImg <- readImage (encodeString path)
   svgImg <- readSVGFile path
-  return $ msum  [ fmap rasterImage dImg,
-                   fmap svgImage svgImg ] -- skip "Left"s and use the first "Right" image
+  return $ msum  [ fmap svgImage svgImg,
+                   fmap rasterImage dImg ] -- skip "Left"s and use the first "Right" image
   where
     rasterImage img = DImage (ImageRaster img) (dynamicMap imageWidth img) (dynamicMap imageHeight img) mempty
     svgImage    img = DImage (ImageDiagram img) 1 1 mempty
