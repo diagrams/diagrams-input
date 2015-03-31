@@ -3,6 +3,8 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE DeriveDataTypeable    #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -61,37 +63,105 @@ module Diagrams.SVG.ReadSVG
     , parseFilter
     , parseImage
     , parseText
+    -- * Parsing data uri in <image>
+    , image
+    , dataUriToImage
+    , ImageData(..)
+    , DImage(..)
+    , Embedded
+    , External
+    , Native
+    , FP(..)
     ) where
 
-import Control.Monad.Catch
-import Control.Monad.Trans.Resource
-import Control.Monad.Trans.Class
-import Control.Monad.Trans.Either
-import Data.Conduit
+import           Codec.Picture
+import           Control.Monad.Catch
+import           Control.Monad.IO.Class
+import           Control.Monad.Trans.Resource
+import           Control.Monad.Trans.Class
+import           Control.Monad.Trans.Either
+import qualified Data.Attoparsec.Text as AT
+import qualified Data.Attoparsec.ByteString as ABS
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Base64 as Base64
+import           Data.Conduit
+import qualified Data.Conduit.List as CL
 import qualified Data.Colour
 import qualified Data.Conduit.List as C
 import qualified Data.HashMap.Strict as H
-import Data.Maybe (fromJust, fromMaybe, isJust)
+import           Data.Maybe (fromJust, fromMaybe, isJust)
 import qualified Data.Text as T
-import Data.Text(Text(..))
-import Data.Text.Encoding
-import Data.XML.Types
-import Diagrams.Prelude
-import Diagrams.TwoD.Ellipse
-import Diagrams.TwoD.Size
-import Diagrams.TwoD.Types
-import Diagrams.SVG.Arguments
-import Diagrams.SVG.Attributes
-import Diagrams.SVG.Path (commands, commandsToTrails, PathCommand(..))
-import Diagrams.SVG.Tree
-import Filesystem.Path (FilePath)
-import Prelude hiding (FilePath)
-import Text.XML.Stream.Parse hiding (parseText)
-import Text.CSS.Parse (parseBlocks)
-import Data.Tuple.Select
-import qualified Data.Conduit.List as CL
-import Control.Monad.IO.Class
-import Data.Typeable (Typeable)
+import           Data.Text(Text(..))
+import           Data.Text.Encoding
+import           Data.Typeable (Typeable)
+import           Data.XML.Types
+import           Diagrams.Prelude
+import           Diagrams.TwoD.Ellipse
+import           Diagrams.TwoD.Path   (isInsideEvenOdd)
+import           Diagrams.TwoD.Size
+import           Diagrams.TwoD.Types
+import           Diagrams.SVG.Arguments
+import           Diagrams.SVG.Attributes
+import           Diagrams.SVG.Path (commands, commandsToTrails, PathCommand(..))
+import           Diagrams.SVG.Tree
+import           Filesystem.Path (FilePath)
+import           Prelude hiding (FilePath)
+import           Text.XML.Stream.Parse hiding (parseText)
+import           Text.CSS.Parse (parseBlocks)
+import           Data.Tuple.Select
+
+-- The following code was included here, because parseImage needs it
+-- and there can be no cyclic dependency (ReadSVG.hs importing Image.hs and vice versa)
+
+type instance V (DImage b n a) = V2
+type instance N (DImage b n a) = n
+
+instance Fractional n => Transformable (DImage b n a) where
+  transform t1 (DImage iD w h t2) = DImage iD w h (t1 <> t2)
+
+instance Fractional n => HasOrigin (DImage b n a) where
+  moveOriginTo p = translate (origin .-. p)
+
+data Embedded deriving Typeable
+data External deriving Typeable
+data Native (t :: *) deriving Typeable
+data FP b = FP FilePath
+
+-------------------------------------------------------------------------------
+-- | 'ImageData' is either 'Embedded' or a reference tagged as 'External'.
+--   The image data is a JuicyPixels @DynamicImage@ or a diagram that contains 
+--   vector and raster graphics (e.g. SVG).
+--   Additionally 'Native' is provided for external libraries to hook into.
+data ImageData t b where
+  ImageRaster :: DynamicImage -> ImageData Embedded b
+  ImageRef    :: FP b -> ImageData External b -- references also need propagated type class constraints of b
+  ImageDiagram :: Diagram b -> ImageData Embedded b
+  ImageDiagramRef :: FilePath -> ImageData External b
+  ImageNative :: t -> ImageData (Native t) b
+
+-------------------------------------------------------------------------------
+-- | An image primitive, the two ints are width followed by height.
+--   Will typically be created by @loadImageEmb@ or @loadImageExt@ which,
+--   will handle setting the width and height to the actual width and height
+--   of the image.
+data DImage :: * -> * -> * -> * where
+  DImage :: ImageData t b -> Int -> Int -> Transformation V2 n -> DImage b n t
+  deriving Typeable
+
+-- | Make a 'DImage' into a 'Diagram'.
+image :: (V b ~ V2, N b ~ n, TypeableFloat n, Typeable a, Typeable b, Renderable (DImage b n a) b)
+      => DImage b n a -> QDiagram b V2 n Any
+
+image (DImage (ImageDiagram img) _ _ _) = img
+image img
+  = mkQD (Prim img)
+         (getEnvelope r)
+         (getTrace r)
+         mempty
+         (Query $ \p -> Any (isInsideEvenOdd p r))
+  where
+    r = rect (fromIntegral w) (fromIntegral h)
+    DImage _ w h _ = img
 
 --------------------------------------------------------------------------------------
 -- | Main library function
@@ -112,7 +182,7 @@ import Data.Typeable (Typeable)
 --    mainWith $ diagramFromSVG
 -- @
 --
-readSVGFile :: (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n) =>
+readSVGFile :: (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Renderable (DImage b n Embedded) b, Typeable b, Typeable n) =>
                FilePath -> IO (Either String (Diagram b))
 readSVGFile fp = runResourceT $ runEitherT $ do
   tree <- lift (parseFile def fp $$ force "error in parseSVG" parseSVG)
@@ -221,9 +291,9 @@ cutOutViewBox _ = id
 -------------------------------------------------------------------------------------
 -- Basic SVG structure
 
-class (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n) => InputConstraints b n
+class (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n, Typeable b, Renderable (DImage b n Embedded) b) => InputConstraints b n
 
-instance (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n) => InputConstraints b n
+instance (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n, Typeable b, Renderable (DImage b n Embedded) b) => InputConstraints b n
 
 -- | Parse \<svg\>, see <http://www.w3.org/TR/SVG/struct.html#SVGElement>
 parseSVG :: (MonadThrow m, InputConstraints b n) => Sink Event m (Maybe (Tag b n))
@@ -486,10 +556,43 @@ clipPathContent = choose [parseRect, parseCircle, parseEllipse, parseLine, parse
 --------------------------------------------------------------------------------------
 -- | Parse \<image\>, see <http://www.w3.org/TR/SVG/struct.html#ImageElement>
 -- <image width="28" xlink:href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAADCAYAAACAjW/aAAAABmJLR0QA/wD/AP+gvaeTAAAAB3RJTUUH2AkMDx4ErQ9V0AAAAClJREFUGJVjYMACGhoa/jMwMPyH0kQDYvQxYpNsaGjAyibCQrL00dSHACypIHXUNrh3AAAAAElFTkSuQmCC" height="3"/>
-parseImage :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => Consumer Event m (Maybe (Tag b n))
+parseImage :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Renderable (DImage b (N b) Embedded) b, Typeable b, Typeable n) => 
+              Consumer Event m (Maybe (Tag b n))
 parseImage = tagName "{http://www.w3.org/2000/svg}image" imageAttrs $
   \(ca,cpa,gea,xlink,pa,class_,style,ext,ar,tr,x,y,w,h) ->
-  do return $ Leaf (id1 ca) mempty mempty -- (xlinkHref xlink)
+  do return $ Leaf (id1 ca) mempty (\_ -> dataUriToImage (xlinkHref xlink))
+
+data ImageType = JPG | PNG | SVG
+--------------------------------------------------------------------------------
+-- | Convert base64 encoded data in <image> to a Diagram b with JuicyPixels
+--   input: "data:image/png;base64,..."
+dataUriToImage :: (Metric (V b), Ord (N b), RealFloat (N b), V2 ~ V b, Renderable (DImage b (N b) Embedded) b, Typeable b, Typeable (N b)) => 
+                  Maybe Text -> Diagram b
+dataUriToImage Nothing = mempty
+dataUriToImage (Just text) = either (const mempty) id $ ABS.parseOnly dataUri (encodeUtf8 text)
+  where
+    jpg = do { ABS.string "jpg"; return JPG }
+    png = do { ABS.string "png"; return PNG }
+    svg = do { ABS.string "svg"; return SVG }
+
+    dataUri = do
+      ABS.string "data:image/"
+      imageType <- ABS.choice [jpg, png, svg]
+      ABS.string ";base64," -- assuming currently that this is always used
+      base64data <- ABS.many1 ABS.anyWord8
+      return $ case im imageType (B.pack base64data) of
+                 Right i -> image (DImage (ImageRaster i) 1 1 mempty)
+                 Left _ -> mempty
+
+im :: ImageType -> B.ByteString -> Either String DynamicImage
+im imageType base64data = case Base64.decode base64data of
+   Left _ -> Left "<image>-tag: Error decoding data uri"
+   Right b64 -> case imageType of
+         JPG -> decodeJpeg base64data -- decodeJpeg :: ByteString -> Either String DynamicImage
+         PNG -> decodePng base64data
+         --  SVG -> preserveAspectRatio w h oldWidth oldHeight ar (readSVGBytes base64data) -- something like that
+         _ -> Left "<image>-tag: format not supported"
+
 
 -- | Parse \<text\>, see <http://www.w3.org/TR/SVG/text.html#TextElement>
 parseText :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => Consumer Event m (Maybe (Tag b n))
