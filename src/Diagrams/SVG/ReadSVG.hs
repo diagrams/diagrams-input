@@ -182,8 +182,8 @@ image img
 --    mainWith $ diagramFromSVG
 -- @
 --
-readSVGFile :: (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Renderable (DImage b n Embedded) b, Typeable b, Typeable n) =>
-               FilePath -> IO (Either String (Diagram b))
+readSVGFile :: (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Renderable (DImage b n Embedded) b,
+                Typeable b, Typeable n) => FilePath -> IO (Either String (Diagram b))
 readSVGFile fp = runResourceT $ runEitherT $ do
   tree <- lift (parseFile def fp $$ force "error in parseSVG" parseSVG)
   right $ diagram tree
@@ -291,9 +291,11 @@ cutOutViewBox _ = id
 -------------------------------------------------------------------------------------
 -- Basic SVG structure
 
-class (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n, Typeable b, Renderable (DImage b n Embedded) b) => InputConstraints b n
+class (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n, Typeable b, 
+       Renderable (DImage b n Embedded) b) => InputConstraints b n
 
-instance (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n, Typeable b, Renderable (DImage b n Embedded) b) => InputConstraints b n
+instance (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n, Typeable b, 
+          Renderable (DImage b n Embedded) b) => InputConstraints b n
 
 -- | Parse \<svg\>, see <http://www.w3.org/TR/SVG/struct.html#SVGElement>
 parseSVG :: (MonadThrow m, InputConstraints b n) => Sink Event m (Maybe (Tag b n))
@@ -309,7 +311,6 @@ parseSVG = tagName "{http://www.w3.org/2000/svg}svg" svgAttrs $
                             (parsePreserveAR ar)
                             (applyStyleSVG st) -- (HashMaps b n -> [SVGStyle n a]) -> a -> a
                             (reverse gs)
-
 
 svgContent :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Tag b n))
 svgContent = choose -- the likely most common are checked first
@@ -446,7 +447,9 @@ parseCircle = tagName "{http://www.w3.org/2000/svg}circle" circleAttrs $
                   (path cx cy r tr)
                   (\maps -> (path cx cy r tr # stroke # applyStyleSVG st maps))
 
-  where path cx cy r tr = (circle (p r) :: RealFloat n => Path V2 n) # applyTr (parseTr tr) # translate (r2 (p cx, p cy))
+  where path cx cy r tr = (circle (p r) :: RealFloat n => Path V2 n) 
+                          # applyTr (parseTr tr)
+                          # translate (r2 (p cx, p cy))
 
 ---------------------------------------------------------------------------------------------------
 -- | Parse \<ellipse\>,  see <http://www.w3.org/TR/SVG11/shapes.html#EllipseElement>
@@ -460,7 +463,8 @@ parseEllipse = tagName "{http://www.w3.org/2000/svg}ellipse" ellipseAttrs $
                   (path cx cy rx ry tr)
                   (\maps -> (path cx cy rx ry tr # stroke # applyStyleSVG st maps))
 
-  where path cx cy rx ry tr = (ellipseXY (p rx) (p ry) :: RealFloat n => Path V2 n) # applyTr (parseTr tr) # translate (r2 (p cx, p cy))
+  where path cx cy rx ry tr = (ellipseXY (p rx) (p ry) :: RealFloat n => Path V2 n) 
+                              # applyTr (parseTr tr) # translate (r2 (p cx, p cy))
 
 ---------------------------------------------------------------------------------------------------
 -- | Parse \<line\>,  see <http://www.w3.org/TR/SVG11/shapes.html#LineElement>
@@ -556,22 +560,28 @@ clipPathContent = choose [parseRect, parseCircle, parseEllipse, parseLine, parse
 --------------------------------------------------------------------------------------
 -- | Parse \<image\>, see <http://www.w3.org/TR/SVG/struct.html#ImageElement>
 -- <image width="28" xlink:href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAADCAYAAACAjW/aAAAABmJLR0QA/wD/AP+gvaeTAAAAB3RJTUUH2AkMDx4ErQ9V0AAAAClJREFUGJVjYMACGhoa/jMwMPyH0kQDYvQxYpNsaGjAyibCQrL00dSHACypIHXUNrh3AAAAAElFTkSuQmCC" height="3"/>
-parseImage :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Renderable (DImage b (N b) Embedded) b, Typeable b, Typeable n) => 
-              Consumer Event m (Maybe (Tag b n))
+parseImage :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Renderable (DImage b (N b) Embedded) b, 
+              Typeable b, Typeable n) => Consumer Event m (Maybe (Tag b n))
 parseImage = tagName "{http://www.w3.org/2000/svg}image" imageAttrs $
   \(ca,cpa,gea,xlink,pa,class_,style,ext,ar,tr,x,y,w,h) ->
-  do return $ Leaf (id1 ca) mempty (\_ -> dataUriToImage (xlinkHref xlink))
+  do return $ Leaf (id1 ca) mempty (\_ -> (dataUriToImage (xlinkHref xlink) (parseMaybeDouble w) (parseMaybeDouble h)) 
+                                           # alignBL
+                                           # applyTr (parseTr tr)
+                                           # translate (r2 (p x,p y)))
+-- TODO aspect ratio
 
 data ImageType = JPG | PNG | SVG
 --------------------------------------------------------------------------------
 -- | Convert base64 encoded data in <image> to a Diagram b with JuicyPixels
 --   input: "data:image/png;base64,..."
-dataUriToImage :: (Metric (V b), Ord (N b), RealFloat (N b), V2 ~ V b, Renderable (DImage b (N b) Embedded) b, Typeable b, Typeable (N b)) => 
-                  Maybe Text -> Diagram b
-dataUriToImage Nothing = mempty
-dataUriToImage (Just text) = either (const mempty) id $ ABS.parseOnly dataUri (encodeUtf8 text)
+dataUriToImage :: (Metric (V b), Ord n, RealFloat n, N b ~ n, V2 ~ V b, Renderable (DImage b n Embedded) b,
+                  Typeable b, Typeable n) => Maybe Text -> n -> n -> Diagram b
+dataUriToImage _           0 h = mempty
+dataUriToImage _           w 0 = mempty
+dataUriToImage Nothing     w h = mempty
+dataUriToImage (Just text) w h = either (const mempty) id $ ABS.parseOnly dataUri (encodeUtf8 text)
   where
-    jpg = do { ABS.string "jpg"; return JPG }
+    jpg = do { ABS.string "jpg"; return JPG } -- ABS = Data.Attoparsec.ByteString
     png = do { ABS.string "png"; return PNG }
     svg = do { ABS.string "svg"; return SVG }
 
@@ -581,17 +591,17 @@ dataUriToImage (Just text) = either (const mempty) id $ ABS.parseOnly dataUri (e
       ABS.string ";base64," -- assuming currently that this is always used
       base64data <- ABS.many1 ABS.anyWord8
       return $ case im imageType (B.pack base64data) of
-                 Right i -> image (DImage (ImageRaster i) 1 1 mempty)
-                 Left _ -> mempty
+                 Right img -> image (DImage (ImageRaster img) (round w) (round h) mempty)
+                 Left x -> mempty
 
 im :: ImageType -> B.ByteString -> Either String DynamicImage
 im imageType base64data = case Base64.decode base64data of
-   Left _ -> Left "<image>-tag: Error decoding data uri"
+   Left _ -> Left "diagrams-input: Error decoding data uri in <image>-tag"
    Right b64 -> case imageType of
-         JPG -> decodeJpeg base64data -- decodeJpeg :: ByteString -> Either String DynamicImage
-         PNG -> decodePng base64data
+         JPG -> decodeJpeg b64 -- decodeJpeg :: ByteString -> Either String DynamicImage
+         PNG -> decodePng b64
          --  SVG -> preserveAspectRatio w h oldWidth oldHeight ar (readSVGBytes base64data) -- something like that
-         _ -> Left "<image>-tag: format not supported"
+         _ -> Left "diagrams-input: format not supported in <image>-tag"
 
 
 -- | Parse \<text\>, see <http://www.w3.org/TR/SVG/text.html#TextElement>

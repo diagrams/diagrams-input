@@ -202,23 +202,24 @@ data Tup n = TS1 Text | TS2 Text Text | TS3 Text Text Text
 parse1 =
   do AT.skipSpace
      AT.char '('
-     a <- parseUntil ')'
-     return (TS1 (pack a))
+     a <- AT.takeTill (== ')')
+     return (TS1 a)
 
 parse2 =
   do AT.skipSpace
      AT.char '('
-     a <- parseUntil ','
-     b <- parseUntil ')'
-     return (TS2 (pack a) (pack b))
+     a <- AT.takeTill (\c -> c == ',' || c == ' ')
+     AT.skipSpace
+     b <- AT.takeTill (== ')')
+     return (TS2 a b)
 
 parse3 =
   do AT.skipSpace
      AT.char '('
-     a <- parseUntil ','
-     b <- parseUntil ','
-     c <- parseUntil ')'
-     return (TS3 (pack a) (pack b) (pack c))
+     a <- AT.takeTill (\c -> c == ',' || c == ' ')
+     b <- AT.takeTill (\c -> c == ',' || c == ' ')
+     c <- AT.takeTill (== ')')
+     return (TS3 a b c)
 
 -----------------------------------------------------------------------------------------------------------------
 -- Transformations, see http://www.w3.org/TR/SVG11/coords.html#TransformAttribute
@@ -243,7 +244,7 @@ parseTransform = AT.choice [matr, trans, scle, rot, skewX, skewY]
 
 applyTr trs = compose (map getTransformations trs)
 
-getTransformations (Tr (T1 x))   = translateX x
+getTransformations (Tr (T1 x))   =  translateX x
 getTransformations (Tr (T2 x y)) = (translateX x) . (translateY y)
 
 -- | See http://www.w3.org/TR/SVG11/coords.html#TransformMatrixDefined
