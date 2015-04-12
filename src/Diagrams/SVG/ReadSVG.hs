@@ -94,6 +94,7 @@ import           Data.Text(Text(..))
 import           Data.Text.Encoding
 import           Data.Typeable (Typeable)
 import           Data.XML.Types
+import           Diagrams.Attributes
 import           Diagrams.Prelude
 import           Diagrams.TwoD.Ellipse
 import           Diagrams.TwoD.Path   (isInsideEvenOdd)
@@ -107,6 +108,7 @@ import           Filesystem.Path (FilePath, extension)
 import           Prelude hiding (FilePath)
 import           Text.XML.Stream.Parse hiding (parseText)
 import           Text.CSS.Parse (parseBlocks)
+import           Debug.Trace
 
 -- The following code was included here, because parseImage needs it
 -- and there can be no cyclic dependency (ReadSVG.hs importing Image.hs and vice versa)
@@ -634,16 +636,14 @@ parseLinearGradient :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => Consume
 parseLinearGradient = tagName "{http://www.w3.org/2000/svg}linearGradient" linearGradAttrs $
   \(cpa,ca,pa,xlink,class_,style,ext,x1,y1,x2,y2,gradientUnits,gradientTransform,spreadMethod) ->
   do gs <- many gradientContent
-     let stops :: RealFloat n => [CSSMap -> [GradientStop n]]
-         stops = map getTexture $ concat $ map extractStops [] -- gs
+     let stops = map getTexture $ concat $ map extractStops gs
      -- stops are lists of functions and everyone of these gets passed the same cssmap
      -- and puts them into a Grad constructor
      return $ Grad (id1 ca) (\css -> (mkLinearGradient (concat (map ($ css) stops))
                                                        ((parseMaybeDouble x1) ^& (parseMaybeDouble y1))
                                                        ((parseMaybeDouble x2) ^& (parseMaybeDouble y2)) GradPad)  )
 
-gradientContent = choose
-     [parseStop, parseMidPointStop] -- parseSet,
+gradientContent = choose [parseStop, parseMidPointStop] -- parseSet,
    --   parseDesc, parseMetaData, parseTitle] -- descriptive Elements (rarely used here, so tested at the end)
 
 -- | Parse \<radialGradient\>, see <http://www.w3.org/TR/SVG/pservers.html#RadialGradientElement>
@@ -651,14 +651,13 @@ parseRadialGradient :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => Consume
 parseRadialGradient = tagName "{http://www.w3.org/2000/svg}radialGradient" radialGradAttrs $
   \(cpa,ca,pa,xlink,class_,style,ext,cx,cy,r,fx,fy,gradientUnits,gradientTransform,spreadMethod) ->
   do gs <- many gradientContent
-     let stops :: (RealFloat n) => [CSSMap -> [GradientStop n]]
-         stops = map getTexture $ concat $ map extractStops [] -- gs
+     let stops = map getTexture $ concat $ map extractStops gs
      return $ Grad (id1 ca) (\css -> (mkRadialGradient (concat (map ($ css) stops))
+                                                             ((parseMaybeDouble fx) ^& (parseMaybeDouble fy)) 0
                                                              ((parseMaybeDouble cx) ^& (parseMaybeDouble cy))
                                                              (parseMaybeDouble r)
-                                                             (0 ^& 0) 0 GradPad) )
+                                                             GradPad) )
 
-extractStops :: (RealFloat n) => Tag b n -> [Tag b n]
 extractStops (SubTree b id1 viewBox ar f children) = concat (map extractStops children)
 extractStops (Stop stops) = [Stop stops]
 extractStops _ = []
@@ -678,7 +677,8 @@ parseStop = tagName "{http://www.w3.org/2000/svg}stop" stopAttrs $
    do let st hmaps = (parseStyles style empty3) ++
                      (parsePA pa empty3) ++
                      (cssStylesFromMap hmaps "stop" (id1 ca) class_)
-      return $ Stop (\hmaps -> mkStops [getStopTriple (parseMaybeDouble offset) (st hmaps)])
+      return $ Debug.Trace.trace (show offset ++ show (parseMaybeDouble offset))
+             $ Stop (\hmaps -> mkStops [getStopTriple (parseMaybeDouble offset) (st hmaps)])
 
 parseMidPointStop = tagName "{http://www.w3.org/2000/svg}midPointStop" stopAttrs $
    \(ca,pa,xlink,class_,style,offset) ->
@@ -690,12 +690,12 @@ parseMidPointStop = tagName "{http://www.w3.org/2000/svg}midPointStop" stopAttrs
 empty3 = (H.empty,H.empty,H.empty)
 
 -- (An opaque color, a stop fraction, an opacity).
--- mkStops :: [(Colour Double, Double, Double)] -> [GradientStop]
+-- mkStops :: [(Colour Double, Double, Double)] -> [GradientStop n]
 -- mkStops [(gray, 0, 1), (white, 0.5, 1), (purple, 1, 1)]
 
-getStopTriple offset styles = -- Debug.Trace.trace (show styles ++ show (col c, offset, opacity o))
-                              (col c, offset, opacity o)
-  where col [Fill c] = blue -- TODO extract colour channel
+getStopTriple offset styles = -- Debug.Trace.trace (show styles) -- show (col c, offset, opacity o))
+                              (col c, offset + 0.000001, opacity o)
+  where col [Fill c] = fromAlphaColour c
         col _ = white
         opacity [FillOpacity x] = x
         opacity _ =  1

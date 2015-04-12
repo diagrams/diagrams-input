@@ -80,7 +80,6 @@ import           Diagrams.SVG.Path
 import           Diagrams.SVG.Tree
 import           Diagrams.TwoD.Types
 import           Text.CSS.Parse
-import           Debug.Trace
 
 ---------------------------------------------------
 
@@ -180,12 +179,10 @@ parseToDouble l | isJust l = either (const Nothing) (Just . fromRational . toRat
                 | otherwise = Nothing
 pp = parseDouble . pack
 
-myDouble = AT.choice[double, dotDouble]
-dotDouble =
-   do AT.skipSpace
-      AT.char '.'
-      a <- integer
-      return a
+-- myDouble = AT.choice[double, dotDouble]
+-- dotDouble =
+--   do AT.skipSpace
+--      AT.char '.'
 
 parsePoints :: RealFloat n => Text -> [(n, n)]
 parsePoints t = either (const []) id (AT.parseOnly (many' parsePoint) t)
@@ -390,7 +387,7 @@ data PresentationAttributes =
       } deriving Show
 
 parsePA :: (RealFloat n, RealFloat a, Read a) => PresentationAttributes -> HashMaps b n -> [(SVGStyle n a)]
-parsePA pa (nodes,_,grad) = Debug.Trace.trace (show pa) l
+parsePA pa (nodes,_,grad) = l
   where l = catMaybes
          [(parseTempl (styleFillVal grad))      (fill pa),
           (parseTempl styleFillRuleVal)         (fillRuleSVG pa),
@@ -511,7 +508,7 @@ getStyles (FillRule Nonzero) = id
 getStyles (FillRule Inherit) = id
 getStyles (FillOpacity x) = Diagrams.Prelude.opacity x
 getStyles (Opacity x) = Diagrams.Prelude.opacity x
-getStyles (StrokeOpacity x) = Debug.Trace.trace ("StrokeOpacity " ++ show x) $ Diagrams.Prelude.opacity x -- we currently don't differentiate between fill opacity and stroke opacity
+getStyles (StrokeOpacity x) = Diagrams.Prelude.opacity x -- we currently don't differentiate between fill opacity and stroke opacity
 getStyles (Stroke x) = lcA x
 getStyles (StrokeTex x) = lineTexture x
 getStyles (StrokeWidth (Len x)) = lwL $ fromRational $ toRational x
@@ -728,7 +725,7 @@ styleStrokeOpacity =
 
 styleStrokeOpacityVal =
   do l <- double
-     return $ StrokeOpacity $ (fromRational . toRational) (Debug.Trace.trace (show l) l)
+     return $ StrokeOpacity $ (fromRational . toRational) l
 
 styleStopColor =
   do AT.skipSpace
