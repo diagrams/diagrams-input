@@ -31,7 +31,6 @@ import Data.List (foldl')
 import Data.Maybe (fromMaybe, fromJust, isJust, isNothing, maybeToList, catMaybes)
 import qualified Data.Text as T
 import Data.Text(Text(..), pack, unpack, empty)
-import Data.Tuple.Select
 import Diagrams.Attributes
 import Diagrams.Path
 import Diagrams.Segment
@@ -170,15 +169,15 @@ outline paths cs = paths ++ [(newPath,newPoint)]
  where
   newPath = translate (r2 (trx,try)) $
             pathFromTrail $
-            if isClosed (sel3 concatPaths)
-            then wrapLoop $ closeLine (mconcat (getTrail (sel3 concatPaths)))
-            else wrapLoop $ closeLine (mconcat (getTrail (sel3 concatPaths))) -- unfortunately this has to be closed also, 
-                                                                              -- because some svgs fill paths that are open
+            if isClosed trail
+            then wrapLoop $ closeLine (mconcat (getTrail trail))
+            else wrapLoop $ closeLine (mconcat (getTrail trail)) -- unfortunately this has to be closed also, 
+                                                                 -- because some svgs fill paths that are open
 
-  newPoint | isClosed (sel3 concatPaths) = (trx, try) -- the endpoint is the old startpoint
-           | otherwise                   = sel2 concatPaths
+  newPoint | isClosed trail = (trx, try) -- the endpoint is the old startpoint
+           | otherwise      = startPoint
 
-  concatPaths = foldl' nextSegment ((x,y), (x,y), O []) cs
+  (ctrlPoint, startPoint, trail) = foldl' nextSegment ((x,y), (x,y), O []) cs
 
 --  traceP (contr,point,path) = Debug.Trace.trace (show point) (contr,point,path)
 
@@ -187,6 +186,7 @@ outline paths cs = paths ++ [(newPath,newPoint)]
                                                                             -- because we splitted the commands like that
   (x,y) | null paths = (0,0)
         | otherwise  = snd (last paths)
+  sel2 (a,b,c) = a
 
 
 -- | The last control point and end point of the last path are needed to calculate the next line to append

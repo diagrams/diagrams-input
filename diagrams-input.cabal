@@ -25,60 +25,19 @@ Library
                     , colour
                     , conduit
                     , css-text
-                    , diagrams-core >= 1.2 && < 1.3
-                    , diagrams-lib >= 1.2 && < 1.3
+                    , diagrams-core >= 1.3 && < 1.4
+                    , diagrams-lib >= 1.3 && < 1.4
                     , either
-                    , exceptions
                     , JuicyPixels >= 3.1.5 && < 3.3
                     , linear >= 1.11.3 && < 1.17
-                    , monad-control == 0.3.*
-                    , old-locale == 1.0.*
                     , resourcet
-                    , semigroups >= 0.3.4 && < 0.17
+                    , semigroups
                     , split
                     , system-filepath
                     , text >= 0.11
-                    , time == 1.4.*
                     , transformers
-                    , tuple
                     , unordered-containers
-                    , void >= 0.6
                     , xml-conduit
                     , xml-types == 0.3.*
   Hs-source-dirs:     src
-  default-language:   Haskell2010
-
-Test-Suite test-all
-  type:               detailed-0.9
-  test-module:        TestAll
-  Hs-source-dirs:     src, Test
-  Build-depends:      attoparsec >= 0.10
-                    , base == 4.*
-                    , bytestring
-                    , Cabal
-                    , colour
-                    , conduit
-                    , css-text
-                    , diagrams-core >= 1.2 && < 1.3
-                    , diagrams-lib >= 1.2 && < 1.3
-                    , diagrams-svg
-                    , directory
-                    , either
-                    , exceptions
-                    , JuicyPixels >= 3.1.5 && < 3.3
-                    , linear >= 1.11.3 && < 1.17
-                    , monad-control == 0.3.*
-                    , old-locale == 1.0.*
-                    , resourcet
-                    , semigroups >= 0.3.4 && < 0.17
-                    , split
-                    , system-filepath
-                    , text >= 0.11
-                    , time == 1.4.*
-                    , transformers
-                    , tuple
-                    , unordered-containers
-                    , void >= 0.6
-                    , xml-conduit
-                    , xml-types == 0.3.*
   default-language:   Haskell2010

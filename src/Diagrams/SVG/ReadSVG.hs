@@ -75,7 +75,6 @@ module Diagrams.SVG.ReadSVG
     ) where
 
 import           Codec.Picture
-import           Control.Monad.Catch
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
 import           Control.Monad.Trans.Class
@@ -104,11 +103,10 @@ import           Diagrams.SVG.Arguments
 import           Diagrams.SVG.Attributes
 import           Diagrams.SVG.Path (commands, commandsToTrails, PathCommand(..))
 import           Diagrams.SVG.Tree
-import           Filesystem.Path (FilePath)
+import           Filesystem.Path (FilePath, extension)
 import           Prelude hiding (FilePath)
 import           Text.XML.Stream.Parse hiding (parseText)
 import           Text.CSS.Parse (parseBlocks)
-import           Data.Tuple.Select
 
 -- The following code was included here, because parseImage needs it
 -- and there can be no cyclic dependency (ReadSVG.hs importing Image.hs and vice versa)
@@ -129,7 +127,7 @@ data FP b = FP FilePath
 
 -------------------------------------------------------------------------------
 -- | 'ImageData' is either 'Embedded' or a reference tagged as 'External'.
---   The image data is a JuicyPixels @DynamicImage@ or a diagram that contains 
+--   The image data is a JuicyPixels @DynamicImage@ or a diagram that contains
 --   vector and raster graphics (e.g. SVG).
 --   Additionally 'Native' is provided for external libraries to hook into.
 data ImageData t b where
@@ -184,9 +182,10 @@ image img
 --
 readSVGFile :: (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Renderable (DImage b n Embedded) b,
                 Typeable b, Typeable n) => FilePath -> IO (Either String (Diagram b))
-readSVGFile fp = runResourceT $ runEitherT $ do
-  tree <- lift (parseFile def fp $$ force "error in parseSVG" parseSVG)
-  right $ diagram tree
+readSVGFile fp = if (extension fp) /= (Just "svg") then return $ Left "Not a svg file" else
+  runResourceT $ runEitherT $ do
+    tree <- lift (parseFile def fp $$ force "error in parseSVG" parseSVG)
+    right $ diagram tree
 
 diagram :: (RealFloat n, V b ~ V2, n ~ N b, Typeable n) => Tag b n -> Diagram b
 diagram tr = (insertRefs (nmap,cssmap,gradmap) tr) # scaleY (-1) # initialStyles
@@ -264,6 +263,7 @@ insertRefs maps (Reference selfId id1 (w,h) styles)
         subTree = lookUp (sel1 maps) (Diagrams.SVG.Attributes.fragment id1) -- :: Tag
         getViewboxPreserveAR (SubTree _ id1 viewbox ar g children) = (viewbox, ar)
         getViewboxPreserveAR _ = (Nothing, Nothing)
+        sel1 (a,b,c) = a
 
 insertRefs maps (SubTree True id1 viewbox ar styles children) =
     subdiagram # styles maps
@@ -291,10 +291,10 @@ cutOutViewBox _ = id
 -------------------------------------------------------------------------------------
 -- Basic SVG structure
 
-class (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n, Typeable b, 
+class (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n, Typeable b,
        Renderable (DImage b n Embedded) b) => InputConstraints b n
 
-instance (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n, Typeable b, 
+instance (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n, Typeable b,
           Renderable (DImage b n Embedded) b) => InputConstraints b n
 
 -- | Parse \<svg\>, see <http://www.w3.org/TR/SVG/struct.html#SVGElement>
@@ -447,7 +447,7 @@ parseCircle = tagName "{http://www.w3.org/2000/svg}circle" circleAttrs $
                   (path cx cy r tr)
                   (\maps -> (path cx cy r tr # stroke # applyStyleSVG st maps))
 
-  where path cx cy r tr = (circle (p r) :: RealFloat n => Path V2 n) 
+  where path cx cy r tr = (circle (p r) :: RealFloat n => Path V2 n)
                           # applyTr (parseTr tr)
                           # translate (r2 (p cx, p cy))
 
@@ -463,7 +463,7 @@ parseEllipse = tagName "{http://www.w3.org/2000/svg}ellipse" ellipseAttrs $
                   (path cx cy rx ry tr)
                   (\maps -> (path cx cy rx ry tr # stroke # applyStyleSVG st maps))
 
-  where path cx cy rx ry tr = (ellipseXY (p rx) (p ry) :: RealFloat n => Path V2 n) 
+  where path cx cy rx ry tr = (ellipseXY (p rx) (p ry) :: RealFloat n => Path V2 n)
                               # applyTr (parseTr tr) # translate (r2 (p cx, p cy))
 
 ---------------------------------------------------------------------------------------------------
@@ -560,11 +560,11 @@ clipPathContent = choose [parseRect, parseCircle, parseEllipse, parseLine, parse
 --------------------------------------------------------------------------------------
 -- | Parse \<image\>, see <http://www.w3.org/TR/SVG/struct.html#ImageElement>
 -- <image width="28" xlink:href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAADCAYAAACAjW/aAAAABmJLR0QA/wD/AP+gvaeTAAAAB3RJTUUH2AkMDx4ErQ9V0AAAAClJREFUGJVjYMACGhoa/jMwMPyH0kQDYvQxYpNsaGjAyibCQrL00dSHACypIHXUNrh3AAAAAElFTkSuQmCC" height="3"/>
-parseImage :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Renderable (DImage b (N b) Embedded) b, 
+parseImage :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Renderable (DImage b (N b) Embedded) b,
               Typeable b, Typeable n) => Consumer Event m (Maybe (Tag b n))
 parseImage = tagName "{http://www.w3.org/2000/svg}image" imageAttrs $
   \(ca,cpa,gea,xlink,pa,class_,style,ext,ar,tr,x,y,w,h) ->
-  do return $ Leaf (id1 ca) mempty (\_ -> (dataUriToImage (xlinkHref xlink) (parseMaybeDouble w) (parseMaybeDouble h)) 
+  do return $ Leaf (id1 ca) mempty (\_ -> (dataUriToImage (xlinkHref xlink) (parseMaybeDouble w) (parseMaybeDouble h))
                                            # alignBL
                                            # applyTr (parseTr tr)
                                            # translate (r2 (p x,p y)))
@@ -633,7 +633,7 @@ parseTSpan = tagName "{http://www.w3.org/2000/svg}tspan" ignoreAttrs $
 parseLinearGradient :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => Consumer Event m (Maybe (Tag b n))
 parseLinearGradient = tagName "{http://www.w3.org/2000/svg}linearGradient" linearGradAttrs $
   \(cpa,ca,pa,xlink,class_,style,ext,x1,y1,x2,y2,gradientUnits,gradientTransform,spreadMethod) ->
-  do -- gs <- many gradientContent
+  do gs <- many gradientContent
      let stops :: RealFloat n => [CSSMap -> [GradientStop n]]
          stops = map getTexture $ concat $ map extractStops [] -- gs
      -- stops are lists of functions and everyone of these gets passed the same cssmap
@@ -643,14 +643,14 @@ parseLinearGradient = tagName "{http://www.w3.org/2000/svg}linearGradient" linea
                                                        ((parseMaybeDouble x2) ^& (parseMaybeDouble y2)) GradPad)  )
 
 gradientContent = choose
-     [parseStop, parseMidPointStop, parseSet,
-      parseDesc, parseMetaData, parseTitle] -- descriptive Elements (rarely used here, so tested at the end)
+     [parseStop, parseMidPointStop] -- parseSet,
+   --   parseDesc, parseMetaData, parseTitle] -- descriptive Elements (rarely used here, so tested at the end)
 
 -- | Parse \<radialGradient\>, see <http://www.w3.org/TR/SVG/pservers.html#RadialGradientElement>
 parseRadialGradient :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => Consumer Event m (Maybe (Tag b n))
 parseRadialGradient = tagName "{http://www.w3.org/2000/svg}radialGradient" radialGradAttrs $
   \(cpa,ca,pa,xlink,class_,style,ext,cx,cy,r,fx,fy,gradientUnits,gradientTransform,spreadMethod) ->
-  do -- gs <- many gradientContent
+  do gs <- many gradientContent
      let stops :: (RealFloat n) => [CSSMap -> [GradientStop n]]
          stops = map getTexture $ concat $ map extractStops [] -- gs
      return $ Grad (id1 ca) (\css -> (mkRadialGradient (concat (map ($ css) stops))

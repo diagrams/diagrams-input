@@ -30,7 +30,6 @@ import qualified Data.HashMap.Strict as H
 import qualified Data.Text as T
 import Data.Text(Text(..))
 import Diagrams.Prelude
-import Data.Tuple.Select
 
 -------------------------------------------------------------------------------------
 -- | A tree structure is needed to handle refences to parts of the tree itself.
@@ -127,4 +126,7 @@ nodes lists (Stop _) = lists
 
 myconcat :: [(Nodelist b n, CSSlist, Gradlist n)] -> (Nodelist b n, CSSlist, Gradlist n)
 myconcat list = (concat $ map sel1 list, concat $ map sel2 list, concat $ map sel3 list)
+  where sel1 (a,b,c) = a
+        sel2 (a,b,c) = b
+        sel3 (a,b,c) = c
 

@@ -70,7 +70,6 @@ import qualified Data.HashMap.Strict as H
 import           Data.Maybe (fromMaybe, fromJust, isJust, isNothing, maybeToList, catMaybes)
 import qualified Data.Text as T
 import           Data.Text(Text(..), pack, unpack, empty, cons, snoc, append)
-import           Data.Tuple.Select
 import           Data.Typeable
 import           Data.Word (Word8)
 import           Diagrams.Attributes
@@ -81,6 +80,7 @@ import           Diagrams.SVG.Path
 import           Diagrams.SVG.Tree
 import           Diagrams.TwoD.Types
 import           Text.CSS.Parse
+import           Debug.Trace
 
 ---------------------------------------------------
 
@@ -178,9 +178,14 @@ parseMaybeDouble d | isJust d = either (const 0) (fromRational . toRational) (AT
 parseToDouble :: RealFloat n => Maybe Text -> Maybe n
 parseToDouble l | isJust l = either (const Nothing) (Just . fromRational . toRational) (AT.parseOnly AT.double (fromJust l))
                 | otherwise = Nothing
-
 pp = parseDouble . pack
 
+myDouble = AT.choice[double, dotDouble]
+dotDouble =
+   do AT.skipSpace
+      AT.char '.'
+      a <- integer
+      return a
 
 parsePoints :: RealFloat n => Text -> [(n, n)]
 parsePoints t = either (const []) id (AT.parseOnly (many' parsePoint) t)
@@ -197,7 +202,7 @@ parseUntil c = AT.manyTill AT.anyChar (AT.char c)
 
 data Tup n = TS1 Text | TS2 Text Text | TS3 Text Text Text 
          | T1  n | T2  n n | T3 n n n 
-         deriving (Show)
+         deriving Show
 
 parse1 =
   do AT.skipSpace
@@ -232,7 +237,7 @@ data Transform n = Tr (Tup n)
                | Rotate (Tup n)
                | Scale (Tup n)
                | SkewX (Tup n)
-               | SkewY (Tup n) deriving (Show)
+               | SkewY (Tup n) deriving Show
 
 parseTr :: RealFloat n => Maybe Text -> [Transform n]
 parseTr =  catMaybes .
@@ -382,14 +387,15 @@ data PresentationAttributes =
       , visibility :: Maybe Text
       , wordSpacing :: Maybe Text
       , writingMode :: Maybe Text
-      }
+      } deriving Show
 
 parsePA :: (RealFloat n, RealFloat a, Read a) => PresentationAttributes -> HashMaps b n -> [(SVGStyle n a)]
-parsePA pa (nodes,_,grad) = l
+parsePA pa (nodes,_,grad) = Debug.Trace.trace (show pa) l
   where l = catMaybes
          [(parseTempl (styleFillVal grad))      (fill pa),
           (parseTempl styleFillRuleVal)         (fillRuleSVG pa),
           (parseTempl styleFillOpacityVal)      (fillOpacity pa),
+          (parseTempl styleOpacityVal)          (Diagrams.SVG.Attributes.opacity pa),
           (parseTempl styleStrokeOpacityVal)    (strokeOpacity pa),
           (parseTempl (styleStrokeVal grad))    (strokeSVG pa),
           (parseTempl styleStrokeWidthVal)      (strokeWidth pa),
@@ -405,21 +411,23 @@ parsePA pa (nodes,_,grad) = l
 -- Example: style="fill:white;stroke:black;stroke-width:0.503546"
 --------------------------------------------------------------------------------------------
 
-data SVGStyle n a = Fill (AlphaColour a) | FillTex (Texture n) | FillOpacity Double | FillRule FR
+data SVGStyle n a = Fill (AlphaColour a) | FillTex (Texture n) | FillOpacity Double | FillRule FR | Opacity Double
                   | Stroke (AlphaColour a) | StrokeTex (Texture n) | StrokeWidth (LenPercent n) | StrokeLineCap LineCap
                   | StrokeLineJoin LineJoin | StrokeMiterLimit n | StrokeDasharray [LenPercent n] | StrokeOpacity Double
                   | ClipPath (Path V2 n)
                   | EmptyStyle
 
-data Unit = EM | EX | PX | IN | CM | MM | PT | PC deriving (Show)
-data FR = Even_Odd | Nonzero | Inherit  deriving (Show)
+data Unit = EM | EX | PX | IN | CM | MM | PT | PC deriving Show
+data FR = Even_Odd | Nonzero | Inherit  deriving Show
 data LenPercent n = Len n | Percent n -- TODO implement
 
 instance Show (SVGStyle n a) where
   show (Fill c) = "Fill"
   show (FillTex t) = "Filltex"
-  show (FillOpacity d) = "FillOpacity"
   show (FillRule r) = "FillRule"
+  show (FillOpacity d) = "FillOpacity"
+  show (Opacity d) = "Opacity"
+  show (StrokeOpacity o) = "StrokeOpacity"
   show (Stroke s) = "Stroke"
   show (StrokeTex s) = "StrokeTex"
   show (StrokeWidth w) = "StrokeWidth"
@@ -427,7 +435,6 @@ instance Show (SVGStyle n a) where
   show (StrokeLineJoin l) = "StrokeLineJoin"
   show (StrokeMiterLimit l) = "StrokeMiterLimit"
   show (StrokeDasharray l) = "StrokeDasharray"
-  show (StrokeOpacity o) = "StrokeOpacity"
   show (ClipPath path) = "ClipPath"
   show (EmptyStyle) = ""
 
@@ -442,7 +449,7 @@ parseStyles text hmaps = either (const []) id $
 -- parseStyleAttr :: (Read a, RealFloat a, RealFloat n) => HashMaps b n -> Parser (SVGStyle n a)
 parseStyleAttr (ns,css,grad) =
   AT.choice [styleFillRule, styleStrokeWidth, styleStrokeDashArray, styleFill grad, styleStroke grad, styleStopColor,
-             styleStopOpacity, styleFillOpacity, styleStrokeOpacity,
+             styleStopOpacity, styleFillOpacity, styleStrokeOpacity, styleOpacity,
              styleStrokeLineCap, styleStrokeLineJoin, styleStrokeMiterLimit, styleClipPath ns]
 
 -- | This function is called on every tag and returns a list of style-attributes to apply 
@@ -503,7 +510,8 @@ getStyles (FillRule Even_Odd) = fillRule EvenOdd
 getStyles (FillRule Nonzero) = id
 getStyles (FillRule Inherit) = id
 getStyles (FillOpacity x) = Diagrams.Prelude.opacity x
-getStyles (StrokeOpacity x) = Diagrams.Prelude.opacity x -- we currently don't differentiate between fill opacity and stroke opacity
+getStyles (Opacity x) = Diagrams.Prelude.opacity x
+getStyles (StrokeOpacity x) = Debug.Trace.trace ("StrokeOpacity " ++ show x) $ Diagrams.Prelude.opacity x -- we currently don't differentiate between fill opacity and stroke opacity
 getStyles (Stroke x) = lcA x
 getStyles (StrokeTex x) = lineTexture x
 getStyles (StrokeWidth (Len x)) = lwL $ fromRational $ toRational x
@@ -559,6 +567,18 @@ styleFillOpacity =
 styleFillOpacityVal =
   do o <- double
      return (FillOpacity $ fromRational $ toRational o)
+
+-- | Example: style="fill:#ffb13b" style="fill:red"
+styleOpacity =
+  do AT.skipSpace
+     AT.string "opacity:"
+     AT.skipSpace
+     styleFillOpacityVal
+
+styleOpacityVal =
+  do o <- double
+     return (Opacity $ fromRational $ toRational o)
+
 
 -- | Example: style="stroke:black"
 styleStroke hmap =
@@ -708,7 +728,7 @@ styleStrokeOpacity =
 
 styleStrokeOpacityVal =
   do l <- double
-     return $ StrokeOpacity $ (fromRational . toRational) l
+     return $ StrokeOpacity $ (fromRational . toRational) (Debug.Trace.trace (show l) l)
 
 styleStopColor =
   do AT.skipSpace
