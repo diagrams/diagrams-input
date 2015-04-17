@@ -29,7 +29,6 @@ module Diagrams.SVG.Attributes
     , parseOne'
     , compose
     , parseDouble
-    , parseMaybeDouble
     , parseToDouble
     , parsePoints
     , parseTempl
@@ -80,6 +79,7 @@ import           Diagrams.SVG.Path
 import           Diagrams.SVG.Tree
 import           Diagrams.TwoD.Types
 import           Text.CSS.Parse
+import           Debug.Trace
 
 ---------------------------------------------------
 
@@ -163,16 +163,12 @@ parseOne' parse = do AT.skipSpace
                      s <- parse
                      return s
 
--- | See http://www.haskell.org/haskellwiki/Compose
+-- | See <http://www.haskell.org/haskellwiki/Compose>
 compose :: [a -> a] -> a -> a
 compose fs v = Prelude.foldl (flip (.)) id fs $ v
 
 parseDouble :: RealFloat n => Text -> n
 parseDouble l = either (const 0) (fromRational . toRational) (AT.parseOnly AT.double l)
-
-parseMaybeDouble :: RealFloat n => Maybe Text -> n
-parseMaybeDouble d | isJust d = either (const 0) (fromRational . toRational) (AT.parseOnly AT.double (fromJust d))
-                   | otherwise = 0
 
 parseToDouble :: RealFloat n => Maybe Text -> Maybe n
 parseToDouble l | isJust l = either (const Nothing) (Just . fromRational . toRational) (AT.parseOnly AT.double (fromJust l))
@@ -224,9 +220,9 @@ parse3 =
      return (TS3 a b c)
 
 -----------------------------------------------------------------------------------------------------------------
--- Transformations, see http://www.w3.org/TR/SVG11/coords.html#TransformAttribute
+-- Transformations, see <http://www.w3.org/TR/SVG11/coords.html#TransformAttribute>
 --    
--- Example:  transform="translate(-121.1511,-167.6958) matrix(4.675013,0,0,4.675013,-1353.75,-678.4329)"
+-- Example: transform="translate(-121.1511,-167.6958) matrix(4.675013,0,0,4.675013,-1353.75,-678.4329)"
 -----------------------------------------------------------------------------------------------------------------
 
 data Transform n = Tr (Tup n)
@@ -249,7 +245,7 @@ applyTr trs = compose (map getTransformations trs)
 getTransformations (Tr (T1 x))   =  translateX x
 getTransformations (Tr (T2 x y)) = (translateX x) . (translateY y)
 
--- | See http://www.w3.org/TR/SVG11/coords.html#TransformMatrixDefined
+-- | See <http://www.w3.org/TR/SVG11/coords.html#TransformMatrixDefined>
 getTransformations (Matrix a b c d e f)
    = (translateX x) . (translateY y) . (scaleX scX) . (scaleY scY) . (rotateBy angle)
   where (angle, scX, scY, x, y) = matrixDecompose (Matrix a b c d e f)
@@ -261,7 +257,7 @@ getTransformations (Scale (T2 x y)) = (scaleX x) . (scaleY y)
 getTransformations (SkewX (T1 x)) = id
 getTransformations (SkewY (T1 y)) = id
 
--- | See http://math.stackexchange.com/questions/13150/extracting-rotation-scale-values-from-2d-transformation-matrix/13165#13165
+-- | See <http://math.stackexchange.com/questions/13150/extracting-rotation-scale-values-from-2d-transformation-matrix/13165#13165>
 matrixDecompose (Matrix m11 m12 m21 m22 m31 m32) = (rotation, scX, scY, transX, transY)
   where
     rotation = atan2 m12 m21
@@ -403,8 +399,8 @@ parsePA pa (nodes,_,grad) = l
           (parseTempl styleStrokeDashArrayVal)  (strokeDasharray pa) ]
 
 --------------------------------------------------------------------------------------------
--- Parse the style attribute, see http://www.w3.org/TR/SVG/painting.html
---                            and http://www.w3.org/TR/SVG/styling.html
+-- Parse the style attribute, see <http://www.w3.org/TR/SVG/painting.html>
+--                            and <http://www.w3.org/TR/SVG/styling.html>
 -- Example: style="fill:white;stroke:black;stroke-width:0.503546"
 --------------------------------------------------------------------------------------------
 
@@ -416,7 +412,7 @@ data SVGStyle n a = Fill (AlphaColour a) | FillTex (Texture n) | FillOpacity Dou
 
 data Unit = EM | EX | PX | IN | CM | MM | PT | PC deriving Show
 data FR = Even_Odd | Nonzero | Inherit  deriving Show
-data LenPercent n = Len n | Percent n -- TODO implement
+data LenPercent n = Len n | Percent n
 
 instance Show (SVGStyle n a) where
   show (Fill c) = "Fill"
@@ -463,14 +459,19 @@ cssStylesFromMap (ns,css,grad) tagName id_ class_ = parseStyles ( Just ( T.conca
                      (concat (map styleFromClass (if isJust class_ then T.words $ fromJust class_ else [])))
                    )
 
+-- | a template that deals with the common parser errors
 parseTempl :: Parser a -> Maybe Text -> Maybe a
 parseTempl p = (either (const Nothing) Just) .
                (AT.parseOnly p).
                (fromMaybe empty)
 
-p x = unL $ fromMaybe (Len 0) $ parseTempl styleLength x -- TODO implement percentage (relative size to viewbox)
+-- | Given a minimum and maximum value of a viewbox (x or y-direction) and a maybe a Text value
+--   Parse this Text value as a length (with a unit) or a percentage relative to the viewbox (minx,maxx)
+--   If parsers fails return 0
+p :: RealFloat n => (n,n) -> Maybe Text -> n
+p (minx,maxx) x = unL $ fromMaybe (Len 0) $ parseTempl styleLength x
   where unL (Len x) = x
-        unL _ = 1
+        unL (Percent x) = x/100 * (maxx-minx)
 
 parseIRI = do AT.choice [ funcIRI, absoluteOrRelativeIRI ]
 
@@ -489,7 +490,7 @@ absoluteOrRelativeIRI =
 
 fragment x = fromMaybe T.empty $ fmap snd (parseTempl parseIRI x) -- look only for the text after "#"
 
--- | Inital styles, see: http://www.w3.org/TR/SVG/painting.html#FillProperty
+-- | Inital styles, see: <http://www.w3.org/TR/SVG/painting.html#FillProperty>
 initialStyles = lwL 0 . fc black . lineCap LineCapButt . lineJoin LineJoinMiter . lineMiterLimit 4
                -- fillRule nonzero -- TODO
                -- fillOpcacity 1 -- TODO
@@ -532,7 +533,7 @@ styleFill hmap =
 styleFillVal gradients = AT.choice [ styleFillColourVal, styleFillTexURL gradients ]
 
 styleFillColourVal =
-  do c <- AT.choice [colorRRGGBB, colorRGB, colorString, colorRGBPercent, colorHSLPercent, colorNone]
+  do c <- AT.choice [colorRRGGBB, colorRGB, colorString, colorRGBPercent, colorHSLPercent, colorNone, colorRGBWord]
      return (Fill c)
 
 styleFillTexURL gradients =
@@ -587,7 +588,7 @@ styleStroke hmap =
 styleStrokeVal gradients = AT.choice [ styleStrokeColourVal, styleStrokeTexURL gradients ]
 
 styleStrokeColourVal =
-  do c <- AT.choice [colorRRGGBB, colorRGB, colorString, colorRGBPercent, colorHSLPercent, colorNone]
+  do c <- AT.choice [colorRRGGBB, colorRGB, colorString, colorRGBPercent, colorHSLPercent, colorNone, colorRGBWord]
      return (Stroke c)
 
 styleStrokeTexURL gradients =
@@ -606,6 +607,7 @@ styleStrokeWidthVal =
   do len <- styleLength
      return (StrokeWidth len)
 
+-- | See <http://www.w3.org/TR/SVG/types.html#Length>
 styleLength =
   do AT.skipSpace
      d <- AT.double
@@ -680,15 +682,17 @@ styleClipPath hmap =
 styleClipPathVal hmap =
   do (absrel,fragment) <- parseIRI
      let t = H.lookup fragment hmap
-     if isJust t then return (ClipPath $ evalPath hmap (fromJust t))
+     if isJust t then return (ClipPath $ evalPath hmap Nothing (fromJust t))
                  else return EmptyStyle
 
--- | Evaluate the tree to a path that is needed for clipPaths
-evalPath :: H.HashMap Text (Tag b n) -> (Tag b n) -> Path V2 n
-evalPath hmap (Leaf             id1 path diagram) = path
--- evalPath hmap (Reference selfId id1 wh f) = evalPath hmap (lookUp hmap (fragment id1))
-evalPath hmap (SubTree _        id1 viewBox ar f children) = mconcat (map (evalPath hmap) children)
-evalPath hmap _ = mempty
+-- | Evaluate the tree to a path. Is only needed for clipPaths
+evalPath :: RealFloat n => H.HashMap Text (Tag b n) -> Maybe (ViewBox n) -> (Tag b n) -> Path V2 n
+evalPath hmap (Just viewBox) (Leaf id1 path diagram)               = path viewBox
+evalPath hmap Nothing        (Leaf id1 path diagram)               = path (0,0,1,1) -- shouldn't happen, there should always be a viewbox
+evalPath hmap _       (SubTree _ id1 (Just viewBox) ar f children) = mconcat (map (evalPath hmap (Just viewBox)) children)
+evalPath hmap (Just viewBox) (SubTree _ id1 Nothing ar f children) = mconcat (map (evalPath hmap (Just viewBox)) children)
+-- evalPath hmap (Reference selfId id1 wh f) = evalPath hmap (lookUp hmap (fragment id1)) -- TODO implement (not that common)
+evalPath hmap _ _ = mempty
 
 -- | Lookup a diagram and return an empty diagram in case the SVG-file has a wrong reference
 lookUp hmap i | isJust l  = fromJust l
@@ -742,8 +746,8 @@ styleStopOpacity =
 -- To Do: Visibility, marker
 
 -----------------------------------------------------------------------
--- Colors, see http://www.w3.org/TR/SVG/color.html and 
---             http://www.w3.org/TR/SVG/painting.html#SpecifyingPaint
+-- Colors, see <http://www.w3.org/TR/SVG/color.html> and 
+--             <http://www.w3.org/TR/SVG/painting.html#SpecifyingPaint>
 -----------------------------------------------------------------------
 
 colorString =
@@ -772,33 +776,60 @@ colorRRGGBB =
                               (fromIntegral ((digitToInt h2) * 16 + (digitToInt h3)) )
                               (fromIntegral ((digitToInt h4) * 16 + (digitToInt h5)) ) )
 
-colorRGBPercent =
-  do AT.string "rgb"
+colorRGBWord =
+  do AT.string "rgb("
      AT.skipSpace
-     AT.char '('
-     r <- parseUntil '%'
-     AT.skipSpace
-     AT.char ','
-     g <- parseUntil '%'
+     r <- decimal
      AT.skipSpace
      AT.char ','
-     b <- parseUntil '%'
+     AT.skipSpace
+     g <- decimal
+     AT.skipSpace
+     AT.char ','
+     AT.skipSpace
+     b <- decimal
      AT.skipSpace
      AT.char ')'
-     return $ opaque (sRGB (read r) (read g) (read b))
+     return $ Debug.Trace.trace ("Ü" ++ (show r) ++ show ((fromIntegral r)/255) ) $ 
+              opaque (sRGB ((fromIntegral r)/255) ((fromIntegral g)/255) ((fromIntegral b)/255))
+
+colorRGBPercent =
+  do AT.string "rgb("
+     AT.skipSpace
+     r <- decimal
+     AT.char '%'
+     AT.skipSpace
+     AT.char ','
+     AT.skipSpace
+     g <- decimal
+     AT.char '%'
+     AT.skipSpace
+     AT.char ','
+     AT.skipSpace
+     b <- decimal
+     AT.char '%'
+     AT.skipSpace
+     AT.char ')'
+     return $ opaque (sRGB ((fromIntegral r)/100) ((fromIntegral g)/100) ((fromIntegral b)/100))
 
 colorHSLPercent =
-  do AT.string "hsl"
+  do AT.string "hsl("
      AT.skipSpace
-     AT.char '('
-     h <- parseUntil ','
-     s <- parseUntil '%'
+     h <- decimal
+     AT.char '%'
      AT.skipSpace
      AT.char ','
-     l <- parseUntil '%'
+     AT.skipSpace
+     s <- decimal
+     AT.char '%'
+     AT.skipSpace
+     AT.char ','
+     AT.skipSpace
+     l <- decimal
+     AT.char '%'
      AT.skipSpace
      AT.char ')'
-     let c = hsl (read h) (read s) (read l)
+     let c = hsl (fromIntegral h) (fromIntegral s) (fromIntegral l)
      return $ opaque (sRGB (channelRed c) (channelGreen c) (channelBlue c))
 
 colorNone =
@@ -808,7 +839,25 @@ colorNone =
 
 -------------------------------------------------------------------------------------
 -- | Example: viewBox="0 0 100 30"
-parseViewBox x = parseTempl viewBox x
+--   Viewboxes establish a new viewport. Percentages (e.g. x="50%") only make sense with a viewport.
+parseViewBox :: RealFloat n => Maybe Text -> Maybe Text -> Maybe Text -> Maybe (ViewBox n)
+parseViewBox vb w h | isJust parsedVB    = parsedVB -- This is how it should always be, 
+                                                    -- but sometimes an <svg>-tag has no viewbox attribute
+                    | pw == 0 || ph == 0 = Nothing -- TODO: What does a browser do here?
+                    | otherwise          = Just (0,0,pw, ph) -- If there is no viewbox the image size is the viewbox 
+                                                             -- TODO: What does a browser do here?
+                                                             -- The only other option I see is finding the min and max values of
+                                                             -- shapes in user coordinate system, ignoring percentages
+                                                             -- But one pass to just find out the viewbox?
+  where parsedVB = parseTempl viewBox vb
+
+        -- Assuming percentages are not used in width/height of the top <svg>-tag
+        -- and there are no sub-<svg>-tags that use percentage-width/height to refer to their calling viewbox
+        -- Using width and height is a hack anyway
+        pw | isJust w = parseDouble $ fromJust w
+           | otherwise = 0
+        ph | isJust h = parseDouble $ fromJust h
+           | otherwise = 0
 
 viewBox =
   do AT.skipSpace

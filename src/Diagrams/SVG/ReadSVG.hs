@@ -183,19 +183,23 @@ image img
 -- @
 --
 readSVGFile :: (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Renderable (DImage b n Embedded) b,
-                Typeable b, Typeable n) => FilePath -> IO (Either String (Diagram b))
+                Typeable b, Typeable n, Show n) => FilePath -> IO (Either String (Diagram b))
 readSVGFile fp = if (extension fp) /= (Just "svg") then return $ Left "Not a svg file" else
   runResourceT $ runEitherT $ do
     tree <- lift (parseFile def fp $$ force "error in parseSVG" parseSVG)
     right $ diagram tree
 
-diagram :: (RealFloat n, V b ~ V2, n ~ N b, Typeable n) => Tag b n -> Diagram b
-diagram tr = (insertRefs (nmap,cssmap,gradmap) tr) # scaleY (-1) # initialStyles
+diagram :: (RealFloat n, V b ~ V2, n ~ N b, Typeable n, Show n) => Tag b n -> Diagram b
+diagram tr = (insertRefs ((nmap,cssmap,gradmap),(0,0,100,100)) tr) # scaleY (-1) # initialStyles
   where
-    (ns,css,grad) = nodes ([],[],[]) tr
+    (ns,css,grad) = nodes Nothing ([],[],[]) tr
     nmap    = H.fromList ns -- needed because of the use-tag and clipPath
     cssmap  = H.fromList css -- CSS inside the <defs> tag
-    gradmap = H.fromList $ map (\(id1,f) -> (id1, f cssmap)) grad
+    gradmap = H.fromList $ map textureFromViewBoxCSS grad
+    textureFromViewBoxCSS (id1, Gr (Just vb) f) = (id1, f (cssmap,vb))
+    textureFromViewBoxCSS (id1, Gr Nothing f)   = (id1, f (cssmap,(0,0,100,100)))
+
+-- Gr (Maybe (ViewBox n)) ((CSSMap,ViewBox n) -> Texture n)
 
 -- | preserveAspectRatio is needed to fit an image into a frame that has a different aspect ratio than the image
 --  (e.g. 16:10 against 4:3).
@@ -249,35 +253,34 @@ lookUp hmap i | isJust l  = fromJust l
               | otherwise = Leaf Nothing mempty mempty -- an empty diagram if we can't find the id
   where l = H.lookup i hmap
 
--- | Evaluate the tree into a diagram by inserting references and applying clipping
-insertRefs :: (V b ~ V2, N b ~ n, RealFloat n) =>
-              (H.HashMap Text (Tag b n), H.HashMap Text Attrs, H.HashMap Text (Texture n)) -> Tag b n -> Diagram b
-insertRefs maps (Leaf id1 path f) = f maps
-insertRefs maps (Grad _ _) = mempty
-insertRefs maps (Stop f)   = mempty
-insertRefs maps (Reference selfId id1 (w,h) styles)
+-- | Evaluate the tree into a diagram by inserting references, applying clipping and passing the viewbox to the leafs
+insertRefs :: (V b ~ V2, N b ~ n, RealFloat n, Show n) => (HashMaps b n, ViewBox n) -> Tag b n -> Diagram b
+insertRefs (maps,viewbox) (Leaf id1 path f) = f (maps,viewbox)
+insertRefs (maps,viewbox) (Grad _ _ _) = mempty
+insertRefs (maps,viewbox) (Stop f)   = mempty
+insertRefs (maps,viewbox) (Reference selfId id1 (w,h) styles)
     | (isJust w && (fromJust w) <= 0) || (isJust h && (fromJust h) <= 0) = mempty
-    | otherwise = referencedDiagram # styles maps
+    | otherwise = referencedDiagram # styles (maps,viewbox)
                                  -- # stretchViewBox (fromJust w) (fromJust h) viewboxPAR
                                     # cutOutViewBox viewboxPAR
   where viewboxPAR = getViewboxPreserveAR subTree
-        referencedDiagram = insertRefs maps (makeSubTreeVisible subTree)
+        referencedDiagram = insertRefs (maps,viewbox) (makeSubTreeVisible viewbox subTree)
         subTree = lookUp (sel1 maps) (Diagrams.SVG.Attributes.fragment id1) -- :: Tag
         getViewboxPreserveAR (SubTree _ id1 viewbox ar g children) = (viewbox, ar)
         getViewboxPreserveAR _ = (Nothing, Nothing)
         sel1 (a,b,c) = a
 
-insertRefs maps (SubTree True id1 viewbox ar styles children) =
+insertRefs (maps,viewbox) (SubTree False _ _ _ _ _) = mempty -- don't display subtrees from the <defs> section
+insertRefs (maps,viewbox) (SubTree True id1 viewb ar styles children) =
     subdiagram # styles maps
              --  # stretchViewBox (Diagrams.TwoD.Size.width subdiagram) (Diagrams.TwoD.Size.height subdiagram) (viewbox, ar)
-               # cutOutViewBox (viewbox, ar)
-  where subdiagram = mconcat (map (insertRefs maps) children)
+               # cutOutViewBox (viewb, ar)
+  where subdiagram = mconcat (map (insertRefs (maps, fromMaybe viewbox viewb)) children)
 
-insertRefs maps (SubTree False _ _ _ _ _) = mempty
 
-makeSubTreeVisible (SubTree _    id1 viewbox ar g children) =
-                   (SubTree True id1 viewbox ar g (map makeSubTreeVisible children))
-makeSubTreeVisible x = x
+makeSubTreeVisible viewbox (SubTree _    id1 vb ar g children) =
+                           (SubTree True id1 (Just viewbox) ar g (map (makeSubTreeVisible viewbox) children))
+makeSubTreeVisible _ x = x
 
 fragment x = fromMaybe T.empty $ fmap snd (parseTempl parseIRI x) -- look only for the text after "#"
 
@@ -294,10 +297,10 @@ cutOutViewBox _ = id
 -- Basic SVG structure
 
 class (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n, Typeable b,
-       Renderable (DImage b n Embedded) b) => InputConstraints b n
+       Renderable (DImage b n Embedded) b, Show n) => InputConstraints b n
 
 instance (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n, Typeable b,
-          Renderable (DImage b n Embedded) b) => InputConstraints b n
+          Renderable (DImage b n Embedded) b, Show n) => InputConstraints b n
 
 -- | Parse \<svg\>, see <http://www.w3.org/TR/SVG/struct.html#SVGElement>
 parseSVG :: (MonadThrow m, InputConstraints b n) => Sink Event m (Maybe (Tag b n))
@@ -308,8 +311,9 @@ parseSVG = tagName "{http://www.w3.org/2000/svg}svg" svgAttrs $
           st hmaps = (parseStyles style hmaps) ++ -- parse the style attribute (style="stop-color:#000000;stop-opacity:0.8")
                      (parsePA  pa  hmaps) ++ -- presentation attributes: stop-color="#000000" stop-opacity="0.8"
                      (cssStylesFromMap hmaps "svg" (id1 ca) class_)
-      return $ SubTree True (id1 ca)
-                            (parseViewBox vb)
+      return $ -- Debug.Trace.trace ("@" ++ show vb ++ show (parseViewBox vb w h)) (
+               SubTree True (id1 ca)
+                            (parseViewBox vb w h)
                             (parsePreserveAR ar)
                             (applyStyleSVG st) -- (HashMaps b n -> [SVGStyle n a]) -> a -> a
                             (reverse gs)
@@ -388,7 +392,7 @@ parseSymbol = tagName "{http://www.w3.org/2000/svg}symbol" symbolAttrs $
                      (parsePA  pa  hmaps) ++
                      (cssStylesFromMap hmaps "symbol" (id1 ca) class_)
       return $ SubTree False (id1 ca)
-                             (parseViewBox viewbox)
+                             (parseViewBox viewbox Nothing Nothing)
                              (parsePreserveAR ar)
                              (applyStyleSVG st)
                              (reverse insideSym)
@@ -402,8 +406,15 @@ parseUse = tagName "{http://www.w3.org/2000/svg}use" useAttrs
       let st hmaps = (parseStyles style hmaps) ++
                      (parsePA  pa  hmaps) ++
                      (cssStylesFromMap hmaps "use" (id1 ca) class_)
-      return $ Reference (id1 ca) (xlinkHref xlink) (parseToDouble w, parseToDouble h)
-                         (\maps -> (translate (r2 (p x,p y))) . (applyTr (parseTr tr)) . (applyStyleSVG st maps))
+      return $ Reference (id1 ca)
+                         (xlinkHref xlink)
+                         (parseToDouble w, parseToDouble h) -- TODO use p
+                         (f tr x y st) -- f gets supplied with the missing maps an viewbox when evaluating the Tag-tree
+  where -- f :: Maybe Text -> Maybe Text -> Maybe Text -> (HashMaps b n -> [SVGStyle n a]) 
+        -- -> (HashMaps b n, (n,n,n,n)) -> Diagram b -> Diagram b
+        f tr x y st (maps,(minx,miny,vbW,vbH)) = (translate (r2 (p (vbW, minx) x, 
+                                                                 p (vbH, miny) y))) .
+                                                 (applyTr (parseTr tr)) . (applyStyleSVG st maps)
 
 useContent :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => Consumer Event m (Maybe (Tag b n))
 useContent = choose [parseDesc,parseTitle] -- descriptive elements
@@ -427,31 +438,30 @@ parseRect = tagName "{http://www.w3.org/2000/svg}rect" rectAttrs $
     let st hmaps = (parseStyles style hmaps) ++
                    (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "rect" (id1 ca) class_)
-    return $ Leaf (id1 ca)
-                  (path x y w h rx ry tr)
-                  (\maps -> (path x y w h rx ry tr # stroke # applyStyleSVG st maps))
-
-  where path x y w h rx ry tr = (rRect (p w) (p h) (p rx) (p ry) :: RealFloat n => Path V2 n )
-                                # alignBL # applyTr (parseTr tr) # translate (r2 (p x, p y))
-
-        rRect pw ph prx pry | prx == 0 && pry == 0 = rect pw ph
-                            | otherwise = roundedRect pw ph (if prx == 0 then pry else prx) -- :: Path V2 n
+    let rRect pw ph prx pry | prx == 0 && pry == 0 = rect pw ph
+                            | otherwise = roundedRect pw ph (if prx == 0 then pry else prx)
+    let path (minx,miny,vbW,vbH) = (rRect (p (minx,vbW) w)  (p (miny,vbH) h)
+                                          (p (minx,vbW) rx) (p (miny,vbH) ry))
+                                   # alignBL
+                                   # applyTr (parseTr tr)
+                                   # translate (r2 (p (minx,vbW) x, p (miny,vbH) y))
+    let f (maps,viewbox) = path viewbox # stroke # applyStyleSVG st maps
+    return $ Leaf (id1 ca) path f
 
 ---------------------------------------------------------------------------------------------------
 -- | Parse \<circle\>,  see <http://www.w3.org/TR/SVG11/shapes.html#CircleElement>
 parseCircle :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Tag b n))
 parseCircle = tagName "{http://www.w3.org/2000/svg}circle" circleAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,r,cx,cy) -> do
-    let st hmaps = (parseStyles style hmaps) ++
+    let st :: (RealFloat n, RealFloat a, Read a) => HashMaps b n -> [SVGStyle n a]
+        st hmaps = (parseStyles style hmaps) ++
                    (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "circle" (id1 ca) class_)
-    return $ Leaf (id1 ca)
-                  (path cx cy r tr)
-                  (\maps -> (path cx cy r tr # stroke # applyStyleSVG st maps))
-
-  where path cx cy r tr = (circle (p r) :: RealFloat n => Path V2 n)
-                          # applyTr (parseTr tr)
-                          # translate (r2 (p cx, p cy))
+    let path (minx,miny,w,h) = circle (p (minx,w) r) -- TODO: radius of a circle in percentages (relative to x?)
+                               # applyTr (parseTr tr)
+                               # translate (r2 (p (minx,w) cx, p (miny,h) cy))
+    let f (maps,viewbox) = path viewbox # stroke # applyStyleSVG st maps
+    return $ Leaf (id1 ca) path f
 
 ---------------------------------------------------------------------------------------------------
 -- | Parse \<ellipse\>,  see <http://www.w3.org/TR/SVG11/shapes.html#EllipseElement>
@@ -461,12 +471,11 @@ parseEllipse = tagName "{http://www.w3.org/2000/svg}ellipse" ellipseAttrs $
     let st hmaps = (parseStyles style hmaps) ++
                    (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "ellipse" (id1 ca) class_)
-    return $ Leaf (id1 ca)
-                  (path cx cy rx ry tr)
-                  (\maps -> (path cx cy rx ry tr # stroke # applyStyleSVG st maps))
-
-  where path cx cy rx ry tr = (ellipseXY (p rx) (p ry) :: RealFloat n => Path V2 n)
-                              # applyTr (parseTr tr) # translate (r2 (p cx, p cy))
+    let path (minx,miny,w,h) = ((ellipseXY (p (minx,w) rx) (p (miny,h) ry) ))
+                               # applyTr (parseTr tr)
+                               # translate (r2 (p (minx,w) cx, p (miny,h) cy))
+    let f (maps,viewbox) = path viewbox # stroke # applyStyleSVG st maps
+    return $ Leaf (id1 ca) path f
 
 ---------------------------------------------------------------------------------------------------
 -- | Parse \<line\>,  see <http://www.w3.org/TR/SVG11/shapes.html#LineElement>
@@ -476,14 +485,13 @@ parseLine = tagName "{http://www.w3.org/2000/svg}line" lineAttrs $
     let st hmaps = (parseStyles style hmaps) ++
                    (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "line" (id1 ca) class_)
-    return $ Leaf (id1 ca)
-                  (path x1 y1 x2 y2 tr)
-                  (\maps -> (path x1 y1 x2 y2 tr # stroke # applyStyleSVG st maps))
-
-  where path x1 y1 x2 y2 tr =
-               (fromSegments [ straight (r2 ((p x2) - (p x1), (p y2) - (p y1))) ] :: RealFloat n => Path V2 n)
-               # applyTr (parseTr tr)
-               # translate (r2 (p x1, p y1))
+    let path (minx,miny,w,h) = (fromSegments [ straight (r2 ((p (minx,w) x2) - (p (minx,w) x1), 
+                                                             (p (miny,h) y2) - (p (miny,h) y1))) ])
+                               # applyTr (parseTr tr)
+                               # translate (r2 (p (minx,w) x1, p (miny,h) y1))
+    let f (maps,viewbox) = path viewbox # stroke
+                                        # applyStyleSVG st maps
+    return $ Leaf (id1 ca) path f
 
 ---------------------------------------------------------------------------------------------------
 -- | Parse \<polyline\>,  see <http://www.w3.org/TR/SVG11/shapes.html#PolylineElement>
@@ -494,16 +502,13 @@ parsePolyLine = tagName "{http://www.w3.org/2000/svg}polyline" polygonAttrs $
                    (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "polyline" (id1 ca) class_)
     let ps = parsePoints (fromJust points)
-    return $ Leaf (id1 ca)
-                  (path ps tr)
-                  (\maps -> (dia  ps tr # applyStyleSVG st maps))
-
-  where path ps tr = fromVertices (map p2 ps) # applyTr (parseTr tr)
-                                              # translate (r2 (head ps))
-
-        dia  ps tr = fromVertices (map p2 ps) # strokeLine
-                                              # applyTr (parseTr tr)
-                                              # translate (r2 (head ps))
+    let path viewbox = fromVertices (map p2 ps) # applyTr (parseTr tr)
+                                                # translate (r2 (head ps))
+    let f (maps,viewbox) = fromVertices (map p2 ps) # strokeLine
+                                                    # applyTr (parseTr tr)
+                                                    # translate (r2 (head ps))
+                                                    # applyStyleSVG st maps
+    return $ Leaf (id1 ca) path f
 
 --------------------------------------------------------------------------------------------------
 -- | Parse \<polygon\>,  see <http://www.w3.org/TR/SVG11/shapes.html#PolygonElement>
@@ -514,17 +519,14 @@ parsePolygon = tagName "{http://www.w3.org/2000/svg}polygon" polygonAttrs $
                    (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "polygon" (id1 ca) class_)
     let ps = parsePoints (fromJust points)
-    return $ Leaf (id1 ca)
-                  (path  ps tr)
-                  (\maps -> (dia   ps tr # applyStyleSVG st maps))
-
-  where path ps tr = fromVertices (map p2 ps) # applyTr (parseTr tr)
-                                              # translate (r2 (head ps))
-
-        dia  ps tr = fromVertices (map p2 ps) # closeLine
-                                              # strokeLoop
-                                              # applyTr (parseTr tr)
-                                              # translate (r2 (head ps))
+    let path viewbox = fromVertices (map p2 ps) # applyTr (parseTr tr)
+                                                # translate (r2 (head ps))
+    let f (maps,viewbox) = fromVertices (map p2 ps) # closeLine
+                                                    # strokeLoop
+                                                    # applyTr (parseTr tr)
+                                                    # translate (r2 (head ps))
+                                                    # applyStyleSVG st maps
+    return $ Leaf (id1 ca) path f
 
 --------------------------------------------------------------------------------------------------
 -- | Parse \<path\>,  see <http://www.w3.org/TR/SVG11/paths.html#PathElement>
@@ -534,11 +536,10 @@ parsePath = tagName "{http://www.w3.org/2000/svg}path" pathAttrs $
     let st hmaps = (parseStyles style hmaps) ++
                    (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "path" (id1 ca) class_)
-    return $ Leaf (id1 ca)
-                  (path d tr)
-                  (\maps -> (path d tr # stroke # applyStyleSVG st maps))
-
-  where path d tr = (mconcat $ commandsToTrails $ commands d) # applyTr (parseTr tr)
+    let path viewbox = (mconcat $ commandsToTrails $ commands d) # applyTr (parseTr tr)
+    let f (maps,viewbox) = path viewbox # stroke
+                                        # applyStyleSVG st maps
+    return $ Leaf (id1 ca) path f
 
 -------------------------------------------------------------------------------------------------
 -- | Parse \<clipPath\>, see <http://www.w3.org/TR/SVG/masking.html#ClipPathElement>
@@ -550,7 +551,7 @@ parseClipPath = tagName "{http://www.w3.org/2000/svg}clipPath" clipPathAttrs $
                    (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "clipPath" (id1 ca) class_)
     return $ SubTree False (id1 ca)
-                     (parseViewBox viewbox)
+                     (parseViewBox viewbox Nothing Nothing)
                      (parsePreserveAR ar)
                      (applyStyleSVG st)
                      (reverse insideClipPath)
@@ -566,10 +567,10 @@ parseImage :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Renderable (DImage 
               Typeable b, Typeable n) => Consumer Event m (Maybe (Tag b n))
 parseImage = tagName "{http://www.w3.org/2000/svg}image" imageAttrs $
   \(ca,cpa,gea,xlink,pa,class_,style,ext,ar,tr,x,y,w,h) ->
-  do return $ Leaf (id1 ca) mempty (\_ -> (dataUriToImage (xlinkHref xlink) (parseMaybeDouble w) (parseMaybeDouble h))
+  do return $ Leaf (id1 ca) mempty (\(_,(minx,miny,vbW,vbH)) -> (dataUriToImage (xlinkHref xlink) (p (minx,vbW) w) (p (miny,vbH) h))
                                            # alignBL
                                            # applyTr (parseTr tr)
-                                           # translate (r2 (p x,p y)))
+                                           # translate (r2 (p (minx,vbW) x, p (miny,vbH) y)))
 -- TODO aspect ratio
 
 data ImageType = JPG | PNG | SVG
@@ -607,6 +608,7 @@ im imageType base64data = case Base64.decode base64data of
 
 
 -- | Parse \<text\>, see <http://www.w3.org/TR/SVG/text.html#TextElement>
+-- TODO: implement
 parseText :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => Consumer Event m (Maybe (Tag b n))
 parseText = tagName "{http://www.w3.org/2000/svg}text" textAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,la,x,y,dx,dy,rot,textlen) ->
@@ -632,31 +634,33 @@ parseTSpan = tagName "{http://www.w3.org/2000/svg}tspan" ignoreAttrs $
 -- | Parse \<linearGradient\>, see <http://www.w3.org/TR/SVG/pservers.html#LinearGradientElement>
 -- example: <linearGradient id="SVGID_2_" gradientUnits="userSpaceOnUse" x1="68.2461" y1="197.6797"
 --           x2="52.6936" y2="237.5337" gradientTransform="matrix(1 0 0 -1 -22.5352 286.4424)">
-parseLinearGradient :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => Consumer Event m (Maybe (Tag b n))
+parseLinearGradient :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Show n) => Consumer Event m (Maybe (Tag b n))
 parseLinearGradient = tagName "{http://www.w3.org/2000/svg}linearGradient" linearGradAttrs $
   \(cpa,ca,pa,xlink,class_,style,ext,x1,y1,x2,y2,gradientUnits,gradientTransform,spreadMethod) ->
   do gs <- many gradientContent
      let stops = map getTexture $ concat $ map extractStops gs
      -- stops are lists of functions and everyone of these gets passed the same cssmap
      -- and puts them into a Grad constructor
-     return $ Grad (id1 ca) (\css -> (mkLinearGradient (concat (map ($ css) stops))
-                                                       ((parseMaybeDouble x1) ^& (parseMaybeDouble y1))
-                                                       ((parseMaybeDouble x2) ^& (parseMaybeDouble y2)) GradPad)  )
+     let f (css,(minx,miny,w,h)) = mkLinearGradient (concat (map ($ css) stops)) -- (minx,miny,w,h) is the viewbox
+                                                    ((p (minx,w) x1) ^& (p (miny,h) y1))
+                                                    ((p (minx,w) x2) ^& (p (miny,h) y2)) GradPad
+     return $ Grad (id1 ca) Nothing f
 
 gradientContent = choose [parseStop, parseMidPointStop] -- parseSet,
    --   parseDesc, parseMetaData, parseTitle] -- descriptive Elements (rarely used here, so tested at the end)
 
 -- | Parse \<radialGradient\>, see <http://www.w3.org/TR/SVG/pservers.html#RadialGradientElement>
-parseRadialGradient :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => Consumer Event m (Maybe (Tag b n))
+parseRadialGradient :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Show n) => Consumer Event m (Maybe (Tag b n))
 parseRadialGradient = tagName "{http://www.w3.org/2000/svg}radialGradient" radialGradAttrs $
   \(cpa,ca,pa,xlink,class_,style,ext,cx,cy,r,fx,fy,gradientUnits,gradientTransform,spreadMethod) ->
   do gs <- many gradientContent
      let stops = map getTexture $ concat $ map extractStops gs
-     return $ Grad (id1 ca) (\css -> (mkRadialGradient (concat (map ($ css) stops))
-                                                             ((parseMaybeDouble fx) ^& (parseMaybeDouble fy)) 0
-                                                             ((parseMaybeDouble cx) ^& (parseMaybeDouble cy))
-                                                             (parseMaybeDouble r)
-                                                             GradPad) )
+     let f (css,(minx,miny,w,h)) = mkRadialGradient (concat (map ($ css) stops))
+                                                    ((p (minx,w) fx) ^& (p (miny,h) fy)) 0
+                                                    ((p (minx,w) cx) ^& (p (miny,h) cy))
+                                                     (p (minx,w) r) --TODO radius percentage relative to x or y?
+                                                    GradPad
+     return $ Grad (id1 ca) Nothing f
 
 extractStops (SubTree b id1 viewBox ar f children) = concat (map extractStops children)
 extractStops (Stop stops) = [Stop stops]
@@ -677,15 +681,15 @@ parseStop = tagName "{http://www.w3.org/2000/svg}stop" stopAttrs $
    do let st hmaps = (parseStyles style empty3) ++
                      (parsePA pa empty3) ++
                      (cssStylesFromMap hmaps "stop" (id1 ca) class_)
-      return $ Debug.Trace.trace (show offset ++ show (parseMaybeDouble offset))
-             $ Stop (\hmaps -> mkStops [getStopTriple (parseMaybeDouble offset) (st hmaps)])
+      return -- $ Debug.Trace.trace (show offset ++ show (p (0,1) offset)) -- (0,1) means that 50% is 0.5
+             $ Stop (\hmaps -> mkStops [getStopTriple (p (0,1) offset) (st hmaps)])
 
 parseMidPointStop = tagName "{http://www.w3.org/2000/svg}midPointStop" stopAttrs $
    \(ca,pa,xlink,class_,style,offset) ->
    do let st hmaps = (parseStyles style empty3) ++
                      (parsePA pa empty3) ++
                      (cssStylesFromMap hmaps "midPointStop" (id1 ca) class_)
-      return $ Stop (\hmaps -> mkStops [getStopTriple (parseMaybeDouble offset) (st hmaps)])
+      return $ Stop (\hmaps -> mkStops [getStopTriple (p (0,1) offset) (st hmaps)])
 
 empty3 = (H.empty,H.empty,H.empty)
 
@@ -693,14 +697,14 @@ empty3 = (H.empty,H.empty,H.empty)
 -- mkStops :: [(Colour Double, Double, Double)] -> [GradientStop n]
 -- mkStops [(gray, 0, 1), (white, 0.5, 1), (purple, 1, 1)]
 
-getStopTriple offset styles = -- Debug.Trace.trace (show styles) -- show (col c, offset, opacity o))
-                              (col c, offset + 0.000001, opacity o)
-  where col [Fill c] = fromAlphaColour c
+getStopTriple offset styles = -- Debug.Trace.trace (show styles ++ "ä" ++ show colors) -- ++ show (col colors, offset, opacity opacities))
+                              (col colors, offset, opacity opacities)
+  where col ((Fill c):_) = Debug.Trace.trace ("col: " ++ show ((fromAlphaColour c) :: AlphaColour Double) ) $ fromAlphaColour c
         col _ = white
-        opacity [FillOpacity x] = x
+        opacity ((FillOpacity x):_) = x
         opacity _ =  1
-        c = Prelude.filter isFill styles
-        o = Prelude.filter isOpacity styles
+        colors = Prelude.filter isFill styles
+        opacities = Prelude.filter isOpacity styles
 
 isFill (Fill _) = True
 isFill _        = False
@@ -709,9 +713,9 @@ isOpacity (FillOpacity _) = True
 isOpacity _           = False
 
 -- | A gradient stop contains a color and fraction (usually between 0 and 1)
---data GradientStop = GradientStop
+--data GradientStop d = GradientStop
 --     { _stopColor    :: SomeColor
---     , _stopFraction :: Double}
+--     , _stopFraction :: d}
 
 ----------------------------------------------------------------------------------------
 -- descriptive elements

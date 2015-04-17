@@ -229,6 +229,7 @@ svgArc :: RealFloat n => (n, n) -> n -> n -> n -> (n,n) -> Trail' Line V2 n
 svgArc (rxx, ryy) xAxisRot largeArcFlag sweepFlag (x2, y2)
      | x2 == 0 && y2 == 0 = emptyLine -- spec F6.2
      | rx == 0 || ry == 0 = straight' (x2,y2) -- spec F6.2
+     | otherwise = mempty
 --     | otherwise = arc' (-rx) (theta1 @@ rad) ((theta1 + dtheta21) @@ rad) # scaleY (ry/rx) # rotateBy xAxisRot
   where rx | rxx < 0   = -rxx  -- spec F6.2
            | otherwise =  rxx

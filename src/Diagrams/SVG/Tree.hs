@@ -23,6 +23,8 @@ module Diagrams.SVG.Tree
     , AlignSVG(..)
     , MeetOrSlice(..)
     , Place
+    , ViewBox(..)
+    , Gr(..)
     )
 where
 import Data.Maybe (isJust, fromJust)
@@ -30,13 +32,14 @@ import qualified Data.HashMap.Strict as H
 import qualified Data.Text as T
 import Data.Text(Text(..))
 import Diagrams.Prelude
+-- import Debug.Trace
 
 -------------------------------------------------------------------------------------
 -- | A tree structure is needed to handle refences to parts of the tree itself.
 -- The \<defs\>-section contains shapes that can be refered to, but the SVG standard allows to refer to
 -- every tag in the SVG-file.
 --
-data Tag b n = Leaf Id (Path V2 n) (HashMaps b n -> Diagram b)-- ^
+data Tag b n = Leaf Id (ViewBox n -> Path V2 n) ((HashMaps b n, ViewBox n) -> Diagram b)-- ^
 -- A leaf consists of
 --
 -- * An Id
@@ -44,7 +47,7 @@ data Tag b n = Leaf Id (Path V2 n) (HashMaps b n -> Diagram b)-- ^
 -- * A path so that this leaf can be used to clip some other part of a tree
 --
 -- * A diagram (Another option would have been to apply a function to the upper path)
-     | Reference Id Id (Maybe n, Maybe n) (HashMaps b n -> Diagram b -> Diagram b)-- ^
+     | Reference Id Id (Maybe n, Maybe n) ((HashMaps b n, ViewBox n) -> Diagram b -> Diagram b)-- ^
 --  A reference (\<use\>-tag) consists of:
 --
 -- * An Id
@@ -63,7 +66,7 @@ data Tag b n = Leaf Id (Path V2 n) (HashMaps b n -> Diagram b)-- ^
 --
 -- * A list of subtrees
      | StyleTag [(Text, [(Text, Text)])] -- ^ A tag that contains CSS styles with selectors and attributes
-     | Grad Id (CSSMap -> Texture n) -- ^ A radial gradient
+     | Grad Id (Maybe (ViewBox n)) ((CSSMap,ViewBox n) -> Texture n) -- ^ A radial gradient
      | Stop (HashMaps b n -> [GradientStop n]) -- ^
 -- We need to make this part of this data structure because Gradient tags can also contain description tags
 
@@ -72,7 +75,8 @@ type Attrs = [(Text, Text)]
 
 type Nodelist b n = [(Text, Tag b n)]
 type CSSlist  = [(Text, Attrs)]
-type Gradlist n = [(Text, (H.HashMap Text Attrs -> Texture n))]
+data Gr n = Gr (Maybe (ViewBox n)) ((CSSMap,ViewBox n) -> Texture n)
+type Gradlist n = [(Text, Gr n)]
 
 type HashMaps b n = (NodesMap b n, CSSMap, GradientsMap n)
 type NodesMap b n = H.HashMap Text (Tag b n)
@@ -91,7 +95,7 @@ instance Show (Tag b n) where
   show (Reference selfid id1 wh f) = "Reference " ++ (show id1) ++ "\n"
   show (SubTree b id1 viewbox ar f tree) = "Sub " ++ (show id1) ++ concat (map show tree) ++ "\n"
   show (StyleTag _)   = "Style "    ++ "\n"
-  show (Grad id1 tex)   = "Grad "   ++ (show id1) ++ "\n"
+  show (Grad id1 vb tex)   = "Grad "   ++ (show id1) ++ "\n"
   show (Stop _)   = "Stop "         ++ "\n"
 
 ----------------------------------------------------------------------------------
@@ -103,26 +107,33 @@ instance Show (Tag b n) where
 -- * CSS classes with corresponding (attribute,value)-pairs, from the <defs>-tag
 --
 -- * Gradients
-nodes :: (Nodelist b n, CSSlist, Gradlist n) -> Tag b n -> (Nodelist b n, CSSlist, Gradlist n)
-nodes (ns,css,grads) (Leaf id1 path diagram)
+nodes :: Show n => Maybe (ViewBox n) -> (Nodelist b n, CSSlist, Gradlist n) -> Tag b n -> (Nodelist b n, CSSlist, Gradlist n)
+nodes viewbox (ns,css,grads) (Leaf id1 path diagram)
   | isJust id1 = (ns ++ [(fromJust id1, Leaf id1 path diagram)],css,grads)
-  | otherwise  = (ns,css,grads)
-nodes (ns,css,grads) (Grad id1 texture)
-  | isJust id1 = (ns,css, grads ++ [(fromJust id1, texture)] )
   | otherwise  = (ns,css,grads)
 
 -- A Reference element for the <use>-tag
-nodes (ns,css,grads) (Reference selfId id1 wh f) = (ns,css,grads)
-nodes (ns,css,grads) (SubTree b id1 viewbox ar f children)
+nodes viewbox (ns,css,grads) (Reference selfId id1 wh f) = (ns,css,grads)
+
+nodes viewbox (ns,css,grads)                      (SubTree b id1 Nothing ar f children)
   | isJust id1 = myconcat [ (ns ++ [(fromJust id1, SubTree b id1 viewbox ar f children)],css,grads) ,
-                            (myconcat (map (nodes (ns,css,grads)) children))
-                          ]
-  | otherwise  = myconcat (map (nodes (ns,css,grads)) children)
+                            (myconcat (map (nodes viewbox (ns,css,grads)) children))                ]
+  | otherwise  = myconcat (map (nodes viewbox (ns,css,grads)) children)
+
+nodes viewbox (ns,css,grads)                      (SubTree b id1 vb ar f children)
+  | isJust id1 = myconcat [ (ns ++ [(fromJust id1, SubTree b id1 vb ar f children)],css,grads) ,
+                            (myconcat (map (nodes vb (ns,css,grads)) children))                ]
+  | otherwise  = myconcat (map (nodes vb (ns,css,grads)) children)
+
+nodes viewbox (ns,css,grads) (Grad id1 vb texture)
+  | isJust id1 = (ns,css, grads ++ [(fromJust id1, Gr viewbox texture)] )
+  | otherwise  = (ns,css,grads)
+
 
 -- There is a global style tag in the defs section of some svg files
-nodes (ns,css,grads) (StyleTag styles) = (ns,css ++ styles,grads)
+nodes viewbox (ns,css,grads) (StyleTag styles) = (ns,css ++ styles,grads)
 -- stops are not extracted here but from the gradient parent node
-nodes lists (Stop _) = lists
+nodes viewbox lists (Stop _) = lists
 
 myconcat :: [(Nodelist b n, CSSlist, Gradlist n)] -> (Nodelist b n, CSSlist, Gradlist n)
 myconcat list = (concat $ map sel1 list, concat $ map sel2 list, concat $ map sel3 list)
