@@ -467,9 +467,9 @@ parseTempl p = (either (const Nothing) Just) .
 
 -- | Given a minimum and maximum value of a viewbox (x or y-direction) and a maybe a Text value
 --   Parse this Text value as a length (with a unit) or a percentage relative to the viewbox (minx,maxx)
---   If parsers fails return 0
-p :: RealFloat n => (n,n) -> Maybe Text -> n
-p (minx,maxx) x = unL $ fromMaybe (Len 0) $ parseTempl styleLength x
+--   If parsers fails return def
+p :: RealFloat n => (n,n) -> n -> Maybe Text -> n
+p (minx,maxx) def x = unL $ fromMaybe (Len def) $ parseTempl styleLength x
   where unL (Len x) = x
         unL (Percent x) = x/100 * (maxx-minx)
 

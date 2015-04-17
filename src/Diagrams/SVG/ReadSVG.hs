@@ -412,8 +412,8 @@ parseUse = tagName "{http://www.w3.org/2000/svg}use" useAttrs
                          (f tr x y st) -- f gets supplied with the missing maps an viewbox when evaluating the Tag-tree
   where -- f :: Maybe Text -> Maybe Text -> Maybe Text -> (HashMaps b n -> [SVGStyle n a]) 
         -- -> (HashMaps b n, (n,n,n,n)) -> Diagram b -> Diagram b
-        f tr x y st (maps,(minx,miny,vbW,vbH)) = (translate (r2 (p (vbW, minx) x, 
-                                                                 p (vbH, miny) y))) .
+        f tr x y st (maps,(minx,miny,vbW,vbH)) = (translate (r2 (p (vbW, minx) 0 x, 
+                                                                 p (vbH, miny) 0 y))) .
                                                  (applyTr (parseTr tr)) . (applyStyleSVG st maps)
 
 useContent :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => Consumer Event m (Maybe (Tag b n))
@@ -440,11 +440,11 @@ parseRect = tagName "{http://www.w3.org/2000/svg}rect" rectAttrs $
                    (cssStylesFromMap hmaps "rect" (id1 ca) class_)
     let rRect pw ph prx pry | prx == 0 && pry == 0 = rect pw ph
                             | otherwise = roundedRect pw ph (if prx == 0 then pry else prx)
-    let path (minx,miny,vbW,vbH) = (rRect (p (minx,vbW) w)  (p (miny,vbH) h)
-                                          (p (minx,vbW) rx) (p (miny,vbH) ry))
+    let path (minx,miny,vbW,vbH) = (rRect (p (minx,vbW) 0 w)  (p (miny,vbH) 0 h)
+                                          (p (minx,vbW) 0 rx) (p (miny,vbH) 0 ry))
                                    # alignBL
                                    # applyTr (parseTr tr)
-                                   # translate (r2 (p (minx,vbW) x, p (miny,vbH) y))
+                                   # translate (r2 (p (minx,vbW) 0 x, p (miny,vbH) 0 y))
     let f (maps,viewbox) = path viewbox # stroke # applyStyleSVG st maps
     return $ Leaf (id1 ca) path f
 
@@ -457,9 +457,9 @@ parseCircle = tagName "{http://www.w3.org/2000/svg}circle" circleAttrs $
         st hmaps = (parseStyles style hmaps) ++
                    (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "circle" (id1 ca) class_)
-    let path (minx,miny,w,h) = circle (p (minx,w) r) -- TODO: radius of a circle in percentages (relative to x?)
+    let path (minx,miny,w,h) = circle (p (minx,w) 0 r) -- TODO: radius of a circle in percentages (relative to x?)
                                # applyTr (parseTr tr)
-                               # translate (r2 (p (minx,w) cx, p (miny,h) cy))
+                               # translate (r2 (p (minx,w) 0 cx, p (miny,h) 0 cy))
     let f (maps,viewbox) = path viewbox # stroke # applyStyleSVG st maps
     return $ Leaf (id1 ca) path f
 
@@ -471,9 +471,9 @@ parseEllipse = tagName "{http://www.w3.org/2000/svg}ellipse" ellipseAttrs $
     let st hmaps = (parseStyles style hmaps) ++
                    (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "ellipse" (id1 ca) class_)
-    let path (minx,miny,w,h) = ((ellipseXY (p (minx,w) rx) (p (miny,h) ry) ))
+    let path (minx,miny,w,h) = ((ellipseXY (p (minx,w) 0 rx) (p (miny,h) 0 ry) ))
                                # applyTr (parseTr tr)
-                               # translate (r2 (p (minx,w) cx, p (miny,h) cy))
+                               # translate (r2 (p (minx,w) 0 cx, p (miny,h) 0 cy))
     let f (maps,viewbox) = path viewbox # stroke # applyStyleSVG st maps
     return $ Leaf (id1 ca) path f
 
@@ -485,10 +485,10 @@ parseLine = tagName "{http://www.w3.org/2000/svg}line" lineAttrs $
     let st hmaps = (parseStyles style hmaps) ++
                    (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "line" (id1 ca) class_)
-    let path (minx,miny,w,h) = (fromSegments [ straight (r2 ((p (minx,w) x2) - (p (minx,w) x1), 
-                                                             (p (miny,h) y2) - (p (miny,h) y1))) ])
+    let path (minx,miny,w,h) = (fromSegments [ straight (r2 ((p (minx,w) 0 x2) - (p (minx,w) 0 x1), 
+                                                             (p (miny,h) 0 y2) - (p (miny,h) 0 y1))) ])
                                # applyTr (parseTr tr)
-                               # translate (r2 (p (minx,w) x1, p (miny,h) y1))
+                               # translate (r2 (p (minx,w) 0 x1, p (miny,h) 0 y1))
     let f (maps,viewbox) = path viewbox # stroke
                                         # applyStyleSVG st maps
     return $ Leaf (id1 ca) path f
@@ -567,10 +567,10 @@ parseImage :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Renderable (DImage 
               Typeable b, Typeable n) => Consumer Event m (Maybe (Tag b n))
 parseImage = tagName "{http://www.w3.org/2000/svg}image" imageAttrs $
   \(ca,cpa,gea,xlink,pa,class_,style,ext,ar,tr,x,y,w,h) ->
-  do return $ Leaf (id1 ca) mempty (\(_,(minx,miny,vbW,vbH)) -> (dataUriToImage (xlinkHref xlink) (p (minx,vbW) w) (p (miny,vbH) h))
+  do return $ Leaf (id1 ca) mempty (\(_,(minx,miny,vbW,vbH)) -> (dataUriToImage (xlinkHref xlink) (p (minx,vbW) 0 w) (p (miny,vbH) 0 h))
                                            # alignBL
                                            # applyTr (parseTr tr)
-                                           # translate (r2 (p (minx,vbW) x, p (miny,vbH) y)))
+                                           # translate (r2 (p (minx,vbW) 0 x, p (miny,vbH) 0 y)))
 -- TODO aspect ratio
 
 data ImageType = JPG | PNG | SVG
@@ -642,8 +642,8 @@ parseLinearGradient = tagName "{http://www.w3.org/2000/svg}linearGradient" linea
      -- stops are lists of functions and everyone of these gets passed the same cssmap
      -- and puts them into a Grad constructor
      let f (css,(minx,miny,w,h)) = mkLinearGradient (concat (map ($ css) stops)) -- (minx,miny,w,h) is the viewbox
-                                                    ((p (minx,w) x1) ^& (p (miny,h) y1))
-                                                    ((p (minx,w) x2) ^& (p (miny,h) y2)) GradPad
+                                                    ((p (minx,w) 0 x1) ^& (p (miny,h) 0 y1))
+                                                    ((p (minx,w) 0 x2) ^& (p (miny,h) 0 y2)) GradPad
      return $ Grad (id1 ca) Nothing f
 
 gradientContent = choose [parseStop, parseMidPointStop] -- parseSet,
@@ -656,9 +656,12 @@ parseRadialGradient = tagName "{http://www.w3.org/2000/svg}radialGradient" radia
   do gs <- many gradientContent
      let stops = map getTexture $ concat $ map extractStops gs
      let f (css,(minx,miny,w,h)) = mkRadialGradient (concat (map ($ css) stops))
-                                                    ((p (minx,w) fx) ^& (p (miny,h) fy)) 0
-                                                    ((p (minx,w) cx) ^& (p (miny,h) cy))
-                                                     (p (minx,w) r) --TODO radius percentage relative to x or y?
+                                                    ((p (minx,w) (p (minx,w) 0 cx) fx) ^& -- focal point fx is set to cx if fx does not exist
+                                                     (p (miny,h) (p (miny,h) 0 cy) fy))
+                                                    0
+                                                    ((p (minx,w) 0             cx) ^& 
+                                                     (p (miny,h) 0             cy))
+                                                     (p (minx,w) 0             r) --TODO radius percentage relative to x or y?
                                                     GradPad
      return $ Grad (id1 ca) Nothing f
 
@@ -682,14 +685,14 @@ parseStop = tagName "{http://www.w3.org/2000/svg}stop" stopAttrs $
                      (parsePA pa empty3) ++
                      (cssStylesFromMap hmaps "stop" (id1 ca) class_)
       return -- $ Debug.Trace.trace (show offset ++ show (p (0,1) offset)) -- (0,1) means that 50% is 0.5
-             $ Stop (\hmaps -> mkStops [getStopTriple (p (0,1) offset) (st hmaps)])
+             $ Stop (\hmaps -> mkStops [getStopTriple (p (0,1) 0 offset) (st hmaps)])
 
 parseMidPointStop = tagName "{http://www.w3.org/2000/svg}midPointStop" stopAttrs $
    \(ca,pa,xlink,class_,style,offset) ->
    do let st hmaps = (parseStyles style empty3) ++
                      (parsePA pa empty3) ++
                      (cssStylesFromMap hmaps "midPointStop" (id1 ca) class_)
-      return $ Stop (\hmaps -> mkStops [getStopTriple (p (0,1) offset) (st hmaps)])
+      return $ Stop (\hmaps -> mkStops [getStopTriple (p (0,1) 0 offset) (st hmaps)])
 
 empty3 = (H.empty,H.empty,H.empty)
 
