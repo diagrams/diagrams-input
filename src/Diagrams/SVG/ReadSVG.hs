@@ -165,7 +165,7 @@ image img
 
 --------------------------------------------------------------------------------------
 -- | Main library function
---
+-- 
 -- @
 -- \{-\# LANGUAGE OverloadedStrings \#-\}
 --
@@ -181,117 +181,22 @@ image img
 --    diagramFromSVG <- readSVGFile \"svgs/web.svg\"
 --    mainWith $ diagramFromSVG
 -- @
---
-readSVGFile :: (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Renderable (DImage b n Embedded) b,
+-- 
+readSVGFile :: (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Renderable (DImage b n Embedded) b, -- TODO upper example
                 Typeable b, Typeable n, Show n) => FilePath -> IO (Either String (Diagram b))
 readSVGFile fp = if (extension fp) /= (Just "svg") then return $ Left "Not a svg file" else
   runResourceT $ runEitherT $ do
     tree <- lift (parseFile def fp $$ force "error in parseSVG" parseSVG)
-    right $ diagram tree
+    right $ Debug.Trace.trace (show tree) (diagram tree)
 
 diagram :: (RealFloat n, V b ~ V2, n ~ N b, Typeable n, Show n) => Tag b n -> Diagram b
-diagram tr = (insertRefs ((nmap,cssmap,gradmap),(0,0,100,100)) tr) # scaleY (-1) # initialStyles
+diagram tr = (insertRefs ((nmap,cssmap,expandedGradMap),(0,0,100,100)) tr) # scaleY (-1) # initialStyles
   where
     (ns,css,grad) = nodes Nothing ([],[],[]) tr
     nmap    = H.fromList ns -- needed because of the use-tag and clipPath
     cssmap  = H.fromList css -- CSS inside the <defs> tag
-    gradmap = H.fromList $ map textureFromViewBoxCSS grad
-    textureFromViewBoxCSS (id1, Gr (Just vb) f) = (id1, f (cssmap,vb))
-    textureFromViewBoxCSS (id1, Gr Nothing f)   = (id1, f (cssmap,(0,0,100,100)))
-
--- Gr (Maybe (ViewBox n)) ((CSSMap,ViewBox n) -> Texture n)
-
--- | preserveAspectRatio is needed to fit an image into a frame that has a different aspect ratio than the image
---  (e.g. 16:10 against 4:3).
---  SVG embeds images the same way: <http://www.w3.org/TR/SVG11/coords.html#PreserveAspectRatioAttribute>
---
--- > import Graphics.SVGFonts
--- >
--- > portrait preserveAR width height = stroke (readSVGFile preserveAR width height "portrait.svg") # showOrigin
--- > text' t = stroke (textSVG' $ TextOpts t lin INSIDE_H KERN False 1 1 ) # fc back # lc black # fillRule EvenOdd
--- > portraitMeet1 x y = (text' "PAR (AlignXY " ++ show x ++ " " show y ++ ") Meet") ===
--- >                     (portrait (PAR (AlignXY x y) Meet) 200 100 <> rect 200 100)
--- > portraitMeet2 x y = (text' "PAR (AlignXY " ++ show x ++ " " show y ++ ") Meet") ===
--- >                     (portrait (PAR (AlignXY x y) Meet) 100 200 <> rect 100 200)
--- > portraitSlice1 x y = (text' "PAR (AlignXY " ++ show x ++ " " show y ++ ") Slice") ===
--- >                      (portrait (PAR (AlignXY x y) Slice) 100 200 <> rect 100 200)
--- > portraitSlice2 x y = (text' "PAR (AlignXY " ++ show x ++ " " show y ++ ") Slice") ===
--- >                      (portrait (PAR (AlignXY x y) Slice) 200 100 <> rect 200 100)
--- > meetX = (text' "meet") === (portraitMeet1 0 0 ||| portraitMeet1 0.5 0 ||| portraitMeet1 1 0)
--- > meetY = (text' "meet") === (portraitMeet2 0 0 ||| portraitMeet2 0 0.5 ||| portraitMeet2 0 1)
--- > sliceX = (text' "slice") === (portraitSlice1 0 0 ||| portraitSlice1 0.5 0 ||| portraitSlice1 1 0)
--- > sliceY = (text' "slice") === (portraitSlice2 0 0 ||| portraitSlice2 0 0.5 ||| portraitSlice2 0 1)
--- > im = (text' "Image to fit") === (portrait (PAR (AlignXY 0 0) Meet) 123 456)
--- > viewport1 = (text' "Viewport1") === (rect 200 100)
--- > viewport2 = (text' "Viewport2") === (rect 100 200)
--- > imageAndViewports = im === viewport1 === viewport2
--- >
--- > par = imageAndViewports ||| ( ( meetX ||| meetY) === ( sliceX ||| sliceY) )
---
--- <<diagrams/src_Graphics_SVGFonts_ReadFont_textPic0.svg#diagram=par&width=300>>
-
--- preserveAspectRatio :: Width -> Height -> Width -> Height -> PreserveAR -> Diagram b -> Diagram b
-preserveAspectRatio newWidth newHeight oldWidth oldHeight preserveAR image
-   | aspectRatio < newAspectRatio = xPlace preserveAR image
-   | otherwise                    = yPlace preserveAR image
-  where aspectRatio = oldWidth / oldHeight
-        newAspectRatio = newWidth / newHeight
-        scaX = newHeight / oldHeight
-        scaY = newWidth / oldWidth
-        xPlace (PAR (AlignXY x y) Meet) i = i # scale scaX # alignBL # translateX ((newWidth  - oldWidth*scaX)*x)
-        xPlace (PAR (AlignXY x y) Slice) i = i # scale scaY # alignBL # translateX ((newWidth  - oldWidth*scaX)*x)
---                                               # view (p2 (0, 0)) (r2 (newWidth, newHeight))
-
-        yPlace (PAR (AlignXY x y) Meet) i = i # scale scaY # alignBL # translateY ((newHeight - oldHeight*scaY)*y)
-        yPlace (PAR (AlignXY x y) Slice) i = i # scale scaX # alignBL # translateY ((newHeight - oldHeight*scaY)*y)
---                                               # view (p2 (0, 0)) (r2 (newWidth, newHeight))
-
-------------------------------------------------------------------------------------------------------------
-
--- | Lookup a diagram and return an empty diagram in case the SVG-file has a wrong reference
-lookUp hmap i | isJust l  = fromJust l
-              | otherwise = Leaf Nothing mempty mempty -- an empty diagram if we can't find the id
-  where l = H.lookup i hmap
-
--- | Evaluate the tree into a diagram by inserting references, applying clipping and passing the viewbox to the leafs
-insertRefs :: (V b ~ V2, N b ~ n, RealFloat n, Show n) => (HashMaps b n, ViewBox n) -> Tag b n -> Diagram b
-insertRefs (maps,viewbox) (Leaf id1 path f) = f (maps,viewbox)
-insertRefs (maps,viewbox) (Grad _ _ _) = mempty
-insertRefs (maps,viewbox) (Stop f)   = mempty
-insertRefs (maps,viewbox) (Reference selfId id1 (w,h) styles)
-    | (isJust w && (fromJust w) <= 0) || (isJust h && (fromJust h) <= 0) = mempty
-    | otherwise = referencedDiagram # styles (maps,viewbox)
-                                 -- # stretchViewBox (fromJust w) (fromJust h) viewboxPAR
-                                    # cutOutViewBox viewboxPAR
-  where viewboxPAR = getViewboxPreserveAR subTree
-        referencedDiagram = insertRefs (maps,viewbox) (makeSubTreeVisible viewbox subTree)
-        subTree = lookUp (sel1 maps) (Diagrams.SVG.Attributes.fragment id1) -- :: Tag
-        getViewboxPreserveAR (SubTree _ id1 viewbox ar g children) = (viewbox, ar)
-        getViewboxPreserveAR _ = (Nothing, Nothing)
-        sel1 (a,b,c) = a
-
-insertRefs (maps,viewbox) (SubTree False _ _ _ _ _) = mempty -- don't display subtrees from the <defs> section
-insertRefs (maps,viewbox) (SubTree True id1 viewb ar styles children) =
-    subdiagram # styles maps
-             --  # stretchViewBox (Diagrams.TwoD.Size.width subdiagram) (Diagrams.TwoD.Size.height subdiagram) (viewbox, ar)
-               # cutOutViewBox (viewb, ar)
-  where subdiagram = mconcat (map (insertRefs (maps, fromMaybe viewbox viewb)) children)
-
-
-makeSubTreeVisible viewbox (SubTree _    id1 vb ar g children) =
-                           (SubTree True id1 (Just viewbox) ar g (map (makeSubTreeVisible viewbox) children))
-makeSubTreeVisible _ x = x
-
-fragment x = fromMaybe T.empty $ fmap snd (parseTempl parseIRI x) -- look only for the text after "#"
-
-stretchViewBox w h ((Just (minX,minY,width,height), Just par)) = preserveAspectRatio w h width height par
-stretchViewBox w h ((Just (minX,minY,width,height), Nothing))  =
-                                    preserveAspectRatio w h width height (PAR (AlignXY 0.5 0.5) Meet)
-stretchViewBox w h _ = id
-
-cutOutViewBox (Just (minX,minY,width,height), _) = rectEnvelope (p2 (minX, minY)) (r2 ((width - minX), (height - minY)))
-                                                 --  (clipBy (rect (width - minX) (height - minY)))
-cutOutViewBox _ = id
+    gradmap = H.fromList grad
+    expandedGradMap = expandGradMap gradmap
 
 -------------------------------------------------------------------------------------
 -- Basic SVG structure
@@ -407,7 +312,7 @@ parseUse = tagName "{http://www.w3.org/2000/svg}use" useAttrs
                      (parsePA  pa  hmaps) ++
                      (cssStylesFromMap hmaps "use" (id1 ca) class_)
       return $ Reference (id1 ca)
-                         (xlinkHref xlink)
+                         (Diagrams.SVG.Attributes.fragment $ xlinkHref xlink)
                          (parseToDouble w, parseToDouble h) -- TODO use p
                          (f tr x y st) -- f gets supplied with the missing maps an viewbox when evaluating the Tag-tree
   where -- f :: Maybe Text -> Maybe Text -> Maybe Text -> (HashMaps b n -> [SVGStyle n a]) 
@@ -636,34 +541,47 @@ parseTSpan = tagName "{http://www.w3.org/2000/svg}tspan" ignoreAttrs $
 --           x2="52.6936" y2="237.5337" gradientTransform="matrix(1 0 0 -1 -22.5352 286.4424)">
 parseLinearGradient :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Show n) => Consumer Event m (Maybe (Tag b n))
 parseLinearGradient = tagName "{http://www.w3.org/2000/svg}linearGradient" linearGradAttrs $
-  \(cpa,ca,pa,xlink,class_,style,ext,x1,y1,x2,y2,gradientUnits,gradientTransform,spreadMethod) ->
+  \(ca,pa,xlink,class_,style,ext,x1,y1,x2,y2,gradientUnits,gradientTransform,spreadMethod) -> -- TODO gradientUnits,gradientTransform
   do gs <- many gradientContent
      let stops = map getTexture $ concat $ map extractStops gs
+
+     -- because of href we have to replace Nothing-attributes by attributes of referenced gradients
+     -- see <http://www.w3.org/TR/SVG/pservers.html#RadialGradientElementHrefAttribute>
+     let attributes = GA pa class_ style x1 y1 x2 y2 Nothing Nothing Nothing Nothing Nothing gradientUnits gradientTransform spreadMethod
+
      -- stops are lists of functions and everyone of these gets passed the same cssmap
      -- and puts them into a Grad constructor
-     let f (css,(minx,miny,w,h)) = mkLinearGradient (concat (map ($ css) stops)) -- (minx,miny,w,h) is the viewbox
-                                                    ((p (minx,w) 0 x1) ^& (p (miny,h) 0 y1))
-                                                    ((p (minx,w) 0 x2) ^& (p (miny,h) 0 y2)) GradPad
-     return $ Grad (id1 ca) Nothing f
+     let f css attributes (minx,miny,w,h) stops =
+           mkLinearGradient (concat (map ($ css) stops)) -- (minx,miny,w,h) is the viewbox
+                            ((p (minx,w) 0 x1) ^& (p (miny,h) 0 y1))
+                            ((p (minx,w) 0 x2) ^& (p (miny,h) 0 y2))
+                            (parseSpread spreadMethod)
+     return $ Grad (id1 ca) (Gr (Diagrams.SVG.Attributes.fragment $ xlinkHref xlink) attributes Nothing stops f)
 
 gradientContent = choose [parseStop, parseMidPointStop] -- parseSet,
    --   parseDesc, parseMetaData, parseTitle] -- descriptive Elements (rarely used here, so tested at the end)
 
 -- | Parse \<radialGradient\>, see <http://www.w3.org/TR/SVG/pservers.html#RadialGradientElement>
 parseRadialGradient :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Show n) => Consumer Event m (Maybe (Tag b n))
-parseRadialGradient = tagName "{http://www.w3.org/2000/svg}radialGradient" radialGradAttrs $
-  \(cpa,ca,pa,xlink,class_,style,ext,cx,cy,r,fx,fy,gradientUnits,gradientTransform,spreadMethod) ->
+parseRadialGradient = tagName "{http://www.w3.org/2000/svg}radialGradient" radialGradAttrs $ -- TODO gradientUnits,gradientTransform
+  \(ca,pa,xlink,class_,style,ext,cx,cy,r,fx,fy,gradientUnits,gradientTransform,spreadMethod) -> 
   do gs <- many gradientContent
      let stops = map getTexture $ concat $ map extractStops gs
-     let f (css,(minx,miny,w,h)) = mkRadialGradient (concat (map ($ css) stops))
-                                                    ((p (minx,w) (p (minx,w) 0 cx) fx) ^& -- focal point fx is set to cx if fx does not exist
-                                                     (p (miny,h) (p (miny,h) 0 cy) fy))
-                                                    0
-                                                    ((p (minx,w) 0             cx) ^& 
-                                                     (p (miny,h) 0             cy))
-                                                     (p (minx,w) 0             r) --TODO radius percentage relative to x or y?
-                                                    GradPad
-     return $ Grad (id1 ca) Nothing f
+
+     -- because of href we have to replace Nothing-attributes by attributes of referenced gradients
+     -- see <http://www.w3.org/TR/SVG/pservers.html#RadialGradientElementHrefAttribute>
+     let attributes = GA pa class_ style Nothing Nothing Nothing Nothing cx cy r fx fy gradientUnits gradientTransform spreadMethod
+
+     let f css attributes (minx,miny,w,h) stops =
+           mkRadialGradient (concat (map ($ css) stops))
+                            ((p (minx,w) (p (minx,w) 0 cx) fx) ^& -- focal point fx is set to cx if fx does not exist
+                            (p (miny,h) (p (miny,h) 0 cy) fy))
+                            0
+                            ((p (minx,w) 0             cx) ^& 
+                            (p (miny,h) 0             cy))
+                            (p (minx,w) (0.5*(w-minx)) r) --TODO radius percentage relative to x or y?
+                            (parseSpread spreadMethod)
+     return $ Grad (id1 ca) (Gr (Diagrams.SVG.Attributes.fragment $ xlinkHref xlink) attributes Nothing stops f)
 
 extractStops (SubTree b id1 viewBox ar f children) = concat (map extractStops children)
 extractStops (Stop stops) = [Stop stops]

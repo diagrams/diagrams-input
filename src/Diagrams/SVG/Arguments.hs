@@ -342,26 +342,24 @@ filterAttrs =
                 (ca,pa,xlink,class_,style,ext,x,y,w,h,filterRes,filterUnits,primUnits) ) l
 
 linearGradAttrs =
-  do cpa <- conditionalProcessingAttributes
-     ca <- coreAttributes
+  do ca <- coreAttributes
      pa <- presentationAttributes
      xlink <- xlinkAttributes
      l <- mapM optionalAttr
       ["class","style","externalResourcesRequired","x1","y1","x2","y2","gradientUnits","gradientTransform","spreadMethod"]
      ignoreAttrs
      return $        (\[class_,style,ext,x1,y1,x2,y2,gradientUnits,gradientTransform,spreadMethod] -> 
-       (cpa,ca,pa,xlink,class_,style,ext,x1,y1,x2,y2,gradientUnits,gradientTransform,spreadMethod) ) l
+       (ca,pa,xlink,class_,style,ext,x1,y1,x2,y2,gradientUnits,gradientTransform,spreadMethod) ) l
 
 radialGradAttrs =
-  do cpa <- conditionalProcessingAttributes
-     ca <- coreAttributes
+  do ca <- coreAttributes
      pa <- presentationAttributes
      xlink <- xlinkAttributes
      l <- mapM optionalAttr
       ["class","style","externalResourcesRequired","cx","cy","r","fx","fy","gradientUnits","gradientTransform","spreadMethod"]
      ignoreAttrs
      return $        (\[class_,style,ext,cx,cy,r,fx,fy,gradientUnits,gradientTransform,spreadMethod] -> 
-       (cpa,ca,pa,xlink,class_,style,ext,cx,cy,r,fx,fy,gradientUnits,gradientTransform,spreadMethod) ) l
+       (ca,pa,xlink,class_,style,ext,cx,cy,r,fx,fy,gradientUnits,gradientTransform,spreadMethod) ) l
 
 setAttrs =
   do ca <- coreAttributes

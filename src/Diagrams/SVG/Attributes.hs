@@ -37,7 +37,6 @@ module Diagrams.SVG.Attributes
     , applyTr
     , parseTr
     -- * Parsing the style attribute
-    , PresentationAttributes(..)
     , applyStyleSVG
     , parseStyles
     , parseLengths
@@ -46,6 +45,7 @@ module Diagrams.SVG.Attributes
     , cssStylesFromMap
     , fragment
     , p
+    , parseSpread
     -- * Parsing Colors
     -- * Parsing preserve aspect ratio
     , parsePreserveAR
@@ -54,6 +54,7 @@ module Diagrams.SVG.Attributes
     , Place(..)
     , MeetOrSlice(..)
     , SVGStyle(..)
+    , PresentationAttributes(..)
     )
 where
 
@@ -320,83 +321,21 @@ skewY =
 -- Alternative way to writing everything into style="
 ------------------------------------------------------------------------------------------------
 
-data PresentationAttributes =
-   PA { alignmentBaseline :: Maybe Text
-      , baselineShift :: Maybe Text
-      , clip :: Maybe Text
-      , clipPath :: Maybe Text
-      , clipRule :: Maybe Text
-      , color :: Maybe Text
-      , colorInterpolation :: Maybe Text
-      , colorInterpolationFilters :: Maybe Text
-      , colorProfile :: Maybe Text
-      , colorRendering :: Maybe Text
-      , cursor :: Maybe Text
-      , direction :: Maybe Text
-      , display :: Maybe Text
-      , dominantBaseline :: Maybe Text
-      , enableBackground :: Maybe Text
-      , fill :: Maybe Text
-      , fillOpacity :: Maybe Text
-      , fillRuleSVG :: Maybe Text
-      , filter :: Maybe Text
-      , floodColor :: Maybe Text
-      , floodOpacity :: Maybe Text
-      , fontFamily :: Maybe Text
-      , fontSize :: Maybe Text
-      , fontSizeAdjust :: Maybe Text
-      , fontStretch :: Maybe Text
-      , fontStyle :: Maybe Text
-      , fontVariant :: Maybe Text
-      , fontWeight :: Maybe Text
-      , glyphOrientationHorizontal :: Maybe Text
-      , glyphOrientationVertical :: Maybe Text
-      , imageRendering :: Maybe Text
-      , kerning :: Maybe Text
-      , letterSpacing :: Maybe Text
-      , lightingColor :: Maybe Text
-      , markerEnd :: Maybe Text
-      , markerMid :: Maybe Text
-      , markerStart :: Maybe Text
-      , mask :: Maybe Text
-      , opacity :: Maybe Text
-      , overflow :: Maybe Text
-      , pointerEvents :: Maybe Text
-      , shapeRendering :: Maybe Text
-      , stopColor :: Maybe Text
-      , stopOpacity :: Maybe Text
-      , strokeSVG :: Maybe Text
-      , strokeDasharray :: Maybe Text
-      , strokeDashoffset :: Maybe Text
-      , strokeLinecap :: Maybe Text
-      , strokeLinejoin :: Maybe Text
-      , strokeMiterlimit :: Maybe Text
-      , strokeOpacity :: Maybe Text
-      , strokeWidth :: Maybe Text
-      , textAnchor :: Maybe Text
-      , textDecoration :: Maybe Text
-      , textRendering :: Maybe Text
-      , unicodeBidi :: Maybe Text
-      , visibility :: Maybe Text
-      , wordSpacing :: Maybe Text
-      , writingMode :: Maybe Text
-      } deriving Show
-
 parsePA :: (RealFloat n, RealFloat a, Read a) => PresentationAttributes -> HashMaps b n -> [(SVGStyle n a)]
-parsePA pa (nodes,_,grad) = l
+parsePA pa (nodes,css,grad) = l
   where l = catMaybes
-         [(parseTempl (styleFillVal grad))      (fill pa),
-          (parseTempl styleFillRuleVal)         (fillRuleSVG pa),
-          (parseTempl styleFillOpacityVal)      (fillOpacity pa),
-          (parseTempl styleOpacityVal)          (Diagrams.SVG.Attributes.opacity pa),
-          (parseTempl styleStrokeOpacityVal)    (strokeOpacity pa),
-          (parseTempl (styleStrokeVal grad))    (strokeSVG pa),
-          (parseTempl styleStrokeWidthVal)      (strokeWidth pa),
-          (parseTempl styleStrokeLineCapVal)    (strokeLinecap pa),
-          (parseTempl styleStrokeLineJoinVal)   (strokeLinejoin pa),
-          (parseTempl styleStrokeMiterLimitVal) (strokeMiterlimit pa),
-          (parseTempl (styleClipPathVal nodes)) (clipPath pa),
-          (parseTempl styleStrokeDashArrayVal)  (strokeDasharray pa) ]
+         [(parseTempl (styleFillVal css grad))   (fill pa),
+          (parseTempl styleFillRuleVal)          (fillRuleSVG pa),
+          (parseTempl styleFillOpacityVal)       (fillOpacity pa),
+          (parseTempl styleOpacityVal)           (Diagrams.SVG.Tree.opacity pa),
+          (parseTempl styleStrokeOpacityVal)     (strokeOpacity pa),
+          (parseTempl (styleStrokeVal css grad)) (strokeSVG pa),
+          (parseTempl styleStrokeWidthVal)       (strokeWidth pa),
+          (parseTempl styleStrokeLineCapVal)     (strokeLinecap pa),
+          (parseTempl styleStrokeLineJoinVal)    (strokeLinejoin pa),
+          (parseTempl styleStrokeMiterLimitVal)  (strokeMiterlimit pa),
+          (parseTempl (styleClipPathVal nodes))  (clipPath pa),
+          (parseTempl styleStrokeDashArrayVal)   (strokeDasharray pa) ]
 
 --------------------------------------------------------------------------------------------
 -- Parse the style attribute, see <http://www.w3.org/TR/SVG/painting.html>
@@ -441,7 +380,7 @@ parseStyles text hmaps = either (const []) id $
 
 -- parseStyleAttr :: (Read a, RealFloat a, RealFloat n) => HashMaps b n -> Parser (SVGStyle n a)
 parseStyleAttr (ns,css,grad) =
-  AT.choice [styleFillRule, styleStrokeWidth, styleStrokeDashArray, styleFill grad, styleStroke grad, styleStopColor,
+  AT.choice [styleFillRule, styleStrokeWidth, styleStrokeDashArray, styleFill css grad, styleStroke css grad, styleStopColor,
              styleStopOpacity, styleFillOpacity, styleStrokeOpacity, styleOpacity,
              styleStrokeLineCap, styleStrokeLineJoin, styleStrokeMiterLimit, styleClipPath ns]
 
@@ -479,16 +418,16 @@ funcIRI =
   do AT.skipSpace
      AT.string "url("
      absrel <- parseUntil '#'
-     fragment <- parseUntil ')'
-     return (T.pack absrel, T.pack fragment)
+     frag <- parseUntil ')'
+     return (T.pack absrel, T.pack frag)
 
 absoluteOrRelativeIRI =
   do AT.skipSpace
      absrel <- parseUntil '#'
-     fragment <- takeText
-     return (T.pack absrel, fragment)
+     frag <- takeText
+     return (T.pack absrel, frag)
 
-fragment x = fromMaybe T.empty $ fmap snd (parseTempl parseIRI x) -- look only for the text after "#"
+fragment x = fmap snd (parseTempl parseIRI x) -- look only for the text after "#"
 
 -- | Inital styles, see: <http://www.w3.org/TR/SVG/painting.html#FillProperty>
 initialStyles = lwL 0 . fc black . lineCap LineCapButt . lineJoin LineJoinMiter . lineMiterLimit 4
@@ -524,23 +463,24 @@ getStyles (ClipPath path) = clipBy path
 getStyles _ = id
 
 -- | Example: style="fill:#ffb13b" style="fill:red"
-styleFill hmap =
+styleFill css hmap =
   do AT.skipSpace
      AT.string "fill:"
      AT.skipSpace
-     styleFillVal hmap
+     styleFillVal css hmap
 
-styleFillVal gradients = AT.choice [ styleFillColourVal, styleFillTexURL gradients ]
+styleFillVal css gradients = AT.choice [ styleFillColourVal, styleFillTexURL css gradients ]
 
 styleFillColourVal =
   do c <- AT.choice [colorRRGGBB, colorRGB, colorString, colorRGBPercent, colorHSLPercent, colorNone, colorRGBWord]
      return (Fill c)
 
-styleFillTexURL gradients =
-  do (absrel,fragment) <- parseIRI
-     let t = H.lookup fragment gradients
-     if isJust t then return (FillTex (fromJust t))
+styleFillTexURL css gradients =
+  do (absrel,frag) <- parseIRI
+     let t = H.lookup frag gradients
+     if isJust t then return (FillTex (getTexture (fromJust t)))
                  else return EmptyStyle
+  where getTexture (Gr refId ga vb stops f) = f css ga (fromMaybe (0,0,0,0) vb) stops
 
 -- | Example: style="fill-rule:evenodd"
 styleFillRule =
@@ -579,23 +519,24 @@ styleOpacityVal =
 
 
 -- | Example: style="stroke:black"
-styleStroke hmap =
+styleStroke css hmap =
   do AT.skipSpace
      AT.string "stroke:"
      AT.skipSpace
-     styleStrokeVal hmap
+     styleStrokeVal css hmap
 
-styleStrokeVal gradients = AT.choice [ styleStrokeColourVal, styleStrokeTexURL gradients ]
+styleStrokeVal css gradients = AT.choice [ styleStrokeColourVal, styleStrokeTexURL css gradients ]
 
 styleStrokeColourVal =
   do c <- AT.choice [colorRRGGBB, colorRGB, colorString, colorRGBPercent, colorHSLPercent, colorNone, colorRGBWord]
      return (Stroke c)
 
-styleStrokeTexURL gradients =
-  do (absrel,fragment) <- parseIRI
-     let t = H.lookup fragment gradients
-     if isJust t then return (StrokeTex (fromJust t))
+styleStrokeTexURL css gradients =
+  do (absrel,frag) <- parseIRI
+     let t = H.lookup frag gradients
+     if isJust t then return (StrokeTex (getTexture (fromJust t)))
                  else return EmptyStyle
+  where getTexture (Gr refId ga vb stops f) = f css ga (fromMaybe (0,0,0,0) vb) stops
 
 -- | Example: style="stroke-width:0.503546"
 styleStrokeWidth =
@@ -680,8 +621,8 @@ styleClipPath hmap =
      styleClipPathVal hmap
 
 styleClipPathVal hmap =
-  do (absrel,fragment) <- parseIRI
-     let t = H.lookup fragment hmap
+  do (absrel,frag) <- parseIRI
+     let t = H.lookup frag hmap
      if isJust t then return (ClipPath $ evalPath hmap Nothing (fromJust t))
                  else return EmptyStyle
 
@@ -743,8 +684,7 @@ styleStopOpacity =
      AT.skipSpace
      styleFillOpacityVal
 
--- To Do: Visibility, marker
-
+-- TODO: Visibility, marker
 -----------------------------------------------------------------------
 -- Colors, see <http://www.w3.org/TR/SVG/color.html> and 
 --             <http://www.w3.org/TR/SVG/painting.html#SpecifyingPaint>
@@ -836,6 +776,23 @@ colorNone =
   do AT.string "none"
      return transparent
 
+-------------------------------------------------------------------------------------
+-- | Example: spreadMethod="pad"
+parseSpread :: Maybe Text -> SpreadMethod
+parseSpread spr | isJust parsedSpread = fromJust parsedSpread
+                | otherwise = GradPad -- most of the time its "pad"
+  where parsedSpread = parseTempl gradSpread spr
+
+gradSpread = AT.choice [gradPad, gradReflect, gradRepeat ]
+
+gradPad = do AT.string "pad"
+             return GradPad
+
+gradReflect = do AT.string "reflect"
+                 return GradReflect
+
+gradRepeat = do AT.string "repeat"
+                return GradRepeat
 
 -------------------------------------------------------------------------------------
 -- | Example: viewBox="0 0 100 30"
