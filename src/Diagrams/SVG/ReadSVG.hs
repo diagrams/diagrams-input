@@ -541,7 +541,7 @@ parseTSpan = tagName "{http://www.w3.org/2000/svg}tspan" ignoreAttrs $
 --           x2="52.6936" y2="237.5337" gradientTransform="matrix(1 0 0 -1 -22.5352 286.4424)">
 parseLinearGradient :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Show n) => Consumer Event m (Maybe (Tag b n))
 parseLinearGradient = tagName "{http://www.w3.org/2000/svg}linearGradient" linearGradAttrs $
-  \(ca,pa,xlink,class_,style,ext,x1,y1,x2,y2,gradientUnits,gradientTransform,spreadMethod) -> -- TODO gradientUnits,gradientTransform
+  \(ca,pa,xlink,class_,style,ext,x1,y1,x2,y2,gradientUnits,gradientTransform,spreadMethod) -> -- TODO gradientUnits
   do gs <- many gradientContent
      let stops = map getTexture $ concat $ map extractStops gs
 
@@ -552,10 +552,11 @@ parseLinearGradient = tagName "{http://www.w3.org/2000/svg}linearGradient" linea
      -- stops are lists of functions and everyone of these gets passed the same cssmap
      -- and puts them into a Grad constructor
      let f css attributes (minx,miny,w,h) stops =
-           mkLinearGradient (concat (map ($ css) stops)) -- (minx,miny,w,h) is the viewbox
-                            ((p (minx,w) 0 x1) ^& (p (miny,h) 0 y1))
-                            ((p (minx,w) 0 x2) ^& (p (miny,h) 0 y2))
-                            (parseSpread spreadMethod)
+           over (_LG . lGradTrans) (applyTr (parseTr gradientTransform))
+           (mkLinearGradient (concat (map ($ css) stops)) -- (minx,miny,w,h) is the viewbox
+                             ((p (minx,w) 0 x1) ^& (p (miny,h) 0 y1))
+                             ((p (minx,w) 0 x2) ^& (p (miny,h) 0 y2))
+                             (parseSpread spreadMethod))
      return $ Grad (id1 ca) (Gr (Diagrams.SVG.Attributes.fragment $ xlinkHref xlink) attributes Nothing stops f)
 
 gradientContent = choose [parseStop, parseMidPointStop] -- parseSet,
@@ -563,7 +564,7 @@ gradientContent = choose [parseStop, parseMidPointStop] -- parseSet,
 
 -- | Parse \<radialGradient\>, see <http://www.w3.org/TR/SVG/pservers.html#RadialGradientElement>
 parseRadialGradient :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Show n) => Consumer Event m (Maybe (Tag b n))
-parseRadialGradient = tagName "{http://www.w3.org/2000/svg}radialGradient" radialGradAttrs $ -- TODO gradientUnits,gradientTransform
+parseRadialGradient = tagName "{http://www.w3.org/2000/svg}radialGradient" radialGradAttrs $ -- TODO gradientUnits
   \(ca,pa,xlink,class_,style,ext,cx,cy,r,fx,fy,gradientUnits,gradientTransform,spreadMethod) -> 
   do gs <- many gradientContent
      let stops = map getTexture $ concat $ map extractStops gs
@@ -573,14 +574,15 @@ parseRadialGradient = tagName "{http://www.w3.org/2000/svg}radialGradient" radia
      let attributes = GA pa class_ style Nothing Nothing Nothing Nothing cx cy r fx fy gradientUnits gradientTransform spreadMethod
 
      let f css attributes (minx,miny,w,h) stops =
-           mkRadialGradient (concat (map ($ css) stops))
-                            ((p (minx,w) (p (minx,w) 0 cx) fx) ^& -- focal point fx is set to cx if fx does not exist
-                            (p (miny,h) (p (miny,h) 0 cy) fy))
-                            0
-                            ((p (minx,w) 0             cx) ^& 
-                            (p (miny,h) 0             cy))
-                            (p (minx,w) (0.5*(w-minx)) r) --TODO radius percentage relative to x or y?
-                            (parseSpread spreadMethod)
+            over (_RG . rGradTrans) (applyTr (parseTr gradientTransform))
+            (mkRadialGradient (concat (map ($ css) stops))
+                              ((p (minx,w) (p (minx,w) 0 cx) fx) ^& -- focal point fx is set to cx if fx does not exist
+                              (p (miny,h) (p (miny,h) 0 cy) fy))
+                              0
+                              ((p (minx,w) 0             cx) ^& 
+                              (p (miny,h) 0             cy))
+                              (p (minx,w) (0.5*(w-minx)) r) --TODO radius percentage relative to x or y?
+                              (parseSpread spreadMethod))
      return $ Grad (id1 ca) (Gr (Diagrams.SVG.Attributes.fragment $ xlinkHref xlink) attributes Nothing stops f)
 
 extractStops (SubTree b id1 viewBox ar f children) = concat (map extractStops children)
