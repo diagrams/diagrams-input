@@ -108,7 +108,6 @@ import           Filesystem.Path (FilePath, extension)
 import           Prelude hiding (FilePath)
 import           Text.XML.Stream.Parse hiding (parseText)
 import           Text.CSS.Parse (parseBlocks)
-import           Debug.Trace
 
 -- The following code was included here, because parseImage needs it
 -- and there can be no cyclic dependency (ReadSVG.hs importing Image.hs and vice versa)
@@ -187,7 +186,7 @@ readSVGFile :: (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Render
 readSVGFile fp = if (extension fp) /= (Just "svg") then return $ Left "Not a svg file" else
   runResourceT $ runEitherT $ do
     tree <- lift (parseFile def fp $$ force "error in parseSVG" parseSVG)
-    right $ Debug.Trace.trace (show tree) (diagram tree)
+    right (diagram tree)
 
 diagram :: (RealFloat n, V b ~ V2, n ~ N b, Typeable n, Show n) => Tag b n -> Diagram b
 diagram tr = (insertRefs ((nmap,cssmap,expandedGradMap),(0,0,100,100)) tr) # scaleY (-1) # initialStyles
@@ -304,7 +303,7 @@ parseSymbol = tagName "{http://www.w3.org/2000/svg}symbol" symbolAttrs $
 
 -----------------------------------------------------------------------------------
 -- | Parse \<use\>, see <http://www.w3.org/TR/SVG/struct.html#UseElement>
-parseUse :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Typeable n) => Consumer Event m (Maybe (Tag b n))
+parseUse :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Typeable n, Show n) => Consumer Event m (Maybe (Tag b n))
 parseUse = tagName "{http://www.w3.org/2000/svg}use" useAttrs
    $ \(ca,cpa,gea,pa,xlink,class_,style,ext,tr,x,y,w,h) ->
    do -- insideUse <- many useContent
@@ -469,7 +468,7 @@ clipPathContent = choose [parseRect, parseCircle, parseEllipse, parseLine, parse
 -- | Parse \<image\>, see <http://www.w3.org/TR/SVG/struct.html#ImageElement>
 -- <image width="28" xlink:href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAADCAYAAACAjW/aAAAABmJLR0QA/wD/AP+gvaeTAAAAB3RJTUUH2AkMDx4ErQ9V0AAAAClJREFUGJVjYMACGhoa/jMwMPyH0kQDYvQxYpNsaGjAyibCQrL00dSHACypIHXUNrh3AAAAAElFTkSuQmCC" height="3"/>
 parseImage :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Renderable (DImage b (N b) Embedded) b,
-              Typeable b, Typeable n) => Consumer Event m (Maybe (Tag b n))
+              Typeable b, Typeable n, Show n) => Consumer Event m (Maybe (Tag b n))
 parseImage = tagName "{http://www.w3.org/2000/svg}image" imageAttrs $
   \(ca,cpa,gea,xlink,pa,class_,style,ext,ar,tr,x,y,w,h) ->
   do return $ Leaf (id1 ca) mempty (\(_,(minx,miny,vbW,vbH)) -> (dataUriToImage (xlinkHref xlink) (p (minx,vbW) 0 w) (p (miny,vbH) 0 h))
@@ -604,8 +603,7 @@ parseStop = tagName "{http://www.w3.org/2000/svg}stop" stopAttrs $
    do let st hmaps = (parseStyles style empty3) ++
                      (parsePA pa empty3) ++
                      (cssStylesFromMap hmaps "stop" (id1 ca) class_)
-      return -- $ Debug.Trace.trace (show offset ++ show (p (0,1) offset)) -- (0,1) means that 50% is 0.5
-             $ Stop (\hmaps -> mkStops [getStopTriple (p (0,1) 0 offset) (st hmaps)])
+      return $ Stop (\hmaps -> mkStops [getStopTriple (p (0,1) 0 offset) (st hmaps)])
 
 parseMidPointStop = tagName "{http://www.w3.org/2000/svg}midPointStop" stopAttrs $
    \(ca,pa,xlink,class_,style,offset) ->
@@ -616,13 +614,8 @@ parseMidPointStop = tagName "{http://www.w3.org/2000/svg}midPointStop" stopAttrs
 
 empty3 = (H.empty,H.empty,H.empty)
 
--- (An opaque color, a stop fraction, an opacity).
--- mkStops :: [(Colour Double, Double, Double)] -> [GradientStop n]
--- mkStops [(gray, 0, 1), (white, 0.5, 1), (purple, 1, 1)]
-
-getStopTriple offset styles = -- Debug.Trace.trace (show styles ++ "ä" ++ show colors) -- ++ show (col colors, offset, opacity opacities))
-                              (col colors, offset, opacity opacities)
-  where col ((Fill c):_) = Debug.Trace.trace ("col: " ++ show ((fromAlphaColour c) :: AlphaColour Double) ) $ fromAlphaColour c
+getStopTriple offset styles = (col colors, offset, opacity opacities)
+  where col ((Fill c):_) = fromAlphaColour c
         col _ = white
         opacity ((FillOpacity x):_) = x
         opacity _ =  1
@@ -674,7 +667,7 @@ parseTitle = tagName "{http://www.w3.org/2000/svg}title" descAttrs
 --  \</metadata\>
 -- @
 --
--- parseMetaData :: (MonadThrow m, Metric (V b), RealFloat (N b)) => Consumer Event m (Maybe (Tag b n))
+parseMetaData :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => Consumer Event m (Maybe (Tag b n))
 parseMetaData = tagName "{http://www.w3.org/2000/svg}metadata" ignoreAttrs
    $ \_ ->
    do -- meta <- many metaContent

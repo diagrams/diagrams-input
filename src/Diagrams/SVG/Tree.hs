@@ -40,7 +40,6 @@ import qualified Data.Text as T
 import           Data.Text(Text(..))
 import           Diagrams.Prelude
 import           Data.Maybe (fromJust, fromMaybe, isJust)
-import           Debug.Trace
 
 -- Note: Maybe we could use the Tree from diagrams here but on the other hand this makes diagrams-input 
 -- more independent of changes of diagrams' internal structures
@@ -214,10 +213,9 @@ attrs   (Gr _ att _ _ _) = att
 
 -- | Every reference is looked up in the gradient map and the stops are added to a list
 gradientStops :: GradientsMap n -> GradRefId -> [CSSMap -> [GradientStop n]]
-gradientStops grMap Nothing = Debug.Trace.trace ("Nothi ") []
-gradientStops grMap (Just refId) | isJust gr = Debug.Trace.trace ("isJu ") ((stops $ fromJust gr) ++ 
-                                              (gradientStops grMap (grRef $ fromJust gr)))
-                                 | otherwise = Debug.Trace.trace ("otherw ") []
+gradientStops grMap Nothing = []
+gradientStops grMap (Just refId) | isJust gr = (stops $ fromJust gr) ++ (gradientStops grMap (grRef $ fromJust gr))
+                                 | otherwise = []
   where gr = H.lookup refId grMap
         grRef   (Gr ref _ _ _ _) = ref
         stops   (Gr _  _ _ st _) = st

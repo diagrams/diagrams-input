@@ -36,7 +36,6 @@ import Diagrams.Path
 import Diagrams.Segment
 import Diagrams.TwoD.Types
 import Diagrams.Prelude
-import Debug.Trace
 
 data AbsRel = Abs | Rel deriving Show
 data PathCommand n =
@@ -67,7 +66,7 @@ parsePathCommand = do { AT.skipSpace;
                       }
 
 -- Although it makes no sense, some programs produce several M in sucession
-parse_m = do { AT.string "m"; t <- many' tuple2; return (Just $ map (M Rel) t) } -- that's why we need many'
+parse_m = do { AT.string "m"; t <- many' tuple2; return (Just $ (M Rel $ head t): (map (L Rel) (tail t)) ) } -- that's why we need many'
 parse_M = do { AT.string "M"; t <- many' tuple2; return (Just $ map (M Abs) t) }
 parse_z = do { AT.choice [AT.string "z", AT.string "Z"]; return (Just [Z]) }
 parse_l = do { AT.string "l"; t <- many' tuple2; return (Just $ map (L Rel) t) }

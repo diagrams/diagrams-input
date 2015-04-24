@@ -80,7 +80,6 @@ import           Diagrams.SVG.Path
 import           Diagrams.SVG.Tree
 import           Diagrams.TwoD.Types
 import           Text.CSS.Parse
-import           Debug.Trace
 
 ---------------------------------------------------
 
@@ -208,6 +207,7 @@ parse2 =
   do AT.skipSpace
      AT.char '('
      a <- AT.takeTill (\c -> c == ',' || c == ' ')
+     AT.choice [AT.char ',', AT.char ' ']
      AT.skipSpace
      b <- AT.takeTill (== ')')
      return (TS2 a b)
@@ -430,10 +430,10 @@ absoluteOrRelativeIRI =
 fragment x = fmap snd (parseTempl parseIRI x) -- look only for the text after "#"
 
 -- | Inital styles, see: <http://www.w3.org/TR/SVG/painting.html#FillProperty>
-initialStyles = lwL 0 . fc black . lineCap LineCapButt . lineJoin LineJoinMiter . lineMiterLimit 4
+initialStyles = lwL 0 . fc black . lineCap LineCapButt . lineJoin LineJoinMiter . lineMiterLimit 4 -- TODO should be: lwL 1
                -- fillRule nonzero -- TODO
                -- fillOpcacity 1 -- TODO
-               -- stroke none -- TODO
+               -- stroke none -- TODO if this is implemented then: lwL 1
                -- stroke-dasharray none
                -- stroke-dashoffset 0 #
                -- stroke-opacity 1 #
@@ -730,8 +730,7 @@ colorRGBWord =
      b <- decimal
      AT.skipSpace
      AT.char ')'
-     return $ Debug.Trace.trace ("Ü" ++ (show r) ++ show ((fromIntegral r)/255) ) $ 
-              opaque (sRGB ((fromIntegral r)/255) ((fromIntegral g)/255) ((fromIntegral b)/255))
+     return $ opaque (sRGB ((fromIntegral r)/255) ((fromIntegral g)/255) ((fromIntegral b)/255))
 
 colorRGBPercent =
   do AT.string "rgb("
