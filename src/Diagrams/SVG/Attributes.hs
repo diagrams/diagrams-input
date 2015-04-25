@@ -80,6 +80,8 @@ import           Diagrams.SVG.Path
 import           Diagrams.SVG.Tree
 import           Diagrams.TwoD.Types
 import           Text.CSS.Parse
+import           Debug.Trace
+import           Diagrams.Core.Transform
 
 ---------------------------------------------------
 
@@ -201,6 +203,7 @@ parse1 =
   do AT.skipSpace
      AT.char '('
      a <- AT.takeTill (== ')')
+     AT.char ')'
      return (TS1 a)
 
 parse2 =
@@ -210,14 +213,18 @@ parse2 =
      AT.choice [AT.char ',', AT.char ' ']
      AT.skipSpace
      b <- AT.takeTill (== ')')
+     AT.char ')'
      return (TS2 a b)
 
 parse3 =
   do AT.skipSpace
      AT.char '('
      a <- AT.takeTill (\c -> c == ',' || c == ' ')
+     AT.choice [AT.char ',', AT.char ' ']
      b <- AT.takeTill (\c -> c == ',' || c == ' ')
+     AT.choice [AT.char ',', AT.char ' ']
      c <- AT.takeTill (== ')')
+     AT.char ')'
      return (TS3 a b c)
 
 -----------------------------------------------------------------------------------------------------------------
@@ -236,20 +243,24 @@ data Transform n = Tr (Tup n)
 parseTr :: RealFloat n => Maybe Text -> [Transform n]
 parseTr =  catMaybes .
            (either (const []) id) .
-           ( AT.parseOnly (separatedBy parseTransform " ") ).
+           ( AT.parseOnly (AT.many1 parseTransform)).  -- (separatedBy parseTransform " ") ).
            (fromMaybe empty)
 
 parseTransform = AT.choice [matr, trans, scle, rot, skewX, skewY]
 
-applyTr trs = compose (map getTransformations trs)
+applyTr trs = Debug.Trace.trace (show trs) $
+              compose (map getTransformations trs)
 
 getTransformations (Tr (T1 x))   =  translateX x
 getTransformations (Tr (T2 x y)) = (translateX x) . (translateY y)
 
 -- | See <http://www.w3.org/TR/SVG11/coords.html#TransformMatrixDefined>
 getTransformations (Matrix a b c d e f)
-   = (translateX x) . (translateY y) . (scaleX scX) . (scaleY scY) . (rotateBy angle)
-  where (angle, scX, scY, x, y) = matrixDecompose (Matrix a b c d e f)
+   = Debug.Trace.trace (show (Matrix a b c d e f) ++ show (angle, scX, scY, x, y)) --(matrixHomRep n))
+     m
+  where m = (scaleX scX) . (scaleY scY) . (translateX x) . (translateY y) . (rotateBy angle)
+        n = translationX 1
+        (angle, scX, scY, x, y) = matrixDecompose (Matrix a b c d e f)
 
 getTransformations (Rotate (T1 angle)) = rotateBy angle
 getTransformations (Rotate (T3 angle x y)) = id -- rotationAbout (p2 (x,y)) (angle)
@@ -300,7 +311,7 @@ scle =
 rot =
   do AT.skipSpace
      AT.string "rotate"
-     tup <- AT.choice [parse3, parse1]
+     tup <- AT.choice [parse1, parse3]
      return (Just $ Rotate (evalTup tup))
 
 skewX =
@@ -430,10 +441,9 @@ absoluteOrRelativeIRI =
 fragment x = fmap snd (parseTempl parseIRI x) -- look only for the text after "#"
 
 -- | Inital styles, see: <http://www.w3.org/TR/SVG/painting.html#FillProperty>
-initialStyles = lwL 0 . fc black . lineCap LineCapButt . lineJoin LineJoinMiter . lineMiterLimit 4 -- TODO should be: lwL 1
+initialStyles = lwL 1 . fc black . lineCap LineCapButt . lineJoin LineJoinMiter . lineMiterLimit 4 . lcA transparent
                -- fillRule nonzero -- TODO
                -- fillOpcacity 1 -- TODO
-               -- stroke none -- TODO if this is implemented then: lwL 1
                -- stroke-dasharray none
                -- stroke-dashoffset 0 #
                -- stroke-opacity 1 #

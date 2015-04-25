@@ -249,7 +249,7 @@ lookUp hmap i | (isJust i) && (isJust l) = fromJust l
 --   applying clipping and passing the viewbox to the leafs
 insertRefs :: (V b ~ V2, N b ~ n, RealFloat n, Show n) => (HashMaps b n, ViewBox n) -> Tag b n -> Diagram b
 
-insertRefs (maps,viewbox) (Leaf id1 path f) = f (maps,viewbox)
+insertRefs (maps,viewbox) (Leaf id1 path f) = (f (maps,viewbox)) # (if isJust id1 then named (T.unpack $ fromJust id1) else id)
 insertRefs (maps,viewbox) (Grad _ _) = mempty
 insertRefs (maps,viewbox) (Stop f) = mempty
 insertRefs (maps,viewbox) (Reference selfId id1 (w,h) styles)
@@ -257,6 +257,7 @@ insertRefs (maps,viewbox) (Reference selfId id1 (w,h) styles)
     | otherwise = referencedDiagram # styles (maps,viewbox)
                                  -- # stretchViewBox (fromJust w) (fromJust h) viewboxPAR
                                     # cutOutViewBox viewboxPAR
+                                    # (if isJust selfId then named (T.unpack $ fromJust selfId) else id)
   where viewboxPAR = getViewboxPreserveAR subTree
         referencedDiagram = insertRefs (maps,viewbox) (makeSubTreeVisible viewbox subTree)
         subTree = lookUp (sel1 maps) id1
@@ -269,6 +270,7 @@ insertRefs (maps,viewbox) (SubTree True id1 viewb ar styles children) =
     subdiagram # styles maps
              --  # stretchViewBox (Diagrams.TwoD.Size.width subdiagram) (Diagrams.TwoD.Size.height subdiagram) (viewbox, ar)
                # cutOutViewBox (viewb, ar)
+               # (if isJust id1 then named (T.unpack $ fromJust id1) else id)
   where subdiagram = mconcat (map (insertRefs (maps, fromMaybe viewbox viewb)) children)
 
 -------------------------------------------------------------------------------------------------------------------------------
