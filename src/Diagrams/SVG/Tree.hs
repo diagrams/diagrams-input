@@ -34,12 +34,12 @@ module Diagrams.SVG.Tree
     , preserveAspectRatio
     )
 where
-import           Data.Maybe (isJust, fromJust)
+import           Data.Maybe (isJust, fromJust , fromMaybe)
 import qualified Data.HashMap.Strict as H
 import qualified Data.Text as T
 import           Data.Text(Text(..))
 import           Diagrams.Prelude
-import           Data.Maybe (fromJust, fromMaybe, isJust)
+import           Diagrams.TwoD.Size
 
 -- Note: Maybe we could use the Tree from diagrams here but on the other hand this makes diagrams-input 
 -- more independent of changes of diagrams' internal structures
@@ -57,12 +57,14 @@ data Tag b n = Leaf Id (ViewBox n -> Path V2 n) ((HashMaps b n, ViewBox n) -> Di
 -- * A path so that this leaf can be used to clip some other part of a tree
 --
 -- * A diagram (Another option would have been to apply a function to the upper path)
-     | Reference Id Id (Maybe n, Maybe n) ((HashMaps b n, ViewBox n) -> Diagram b -> Diagram b)-- ^
+     | Reference Id Id (ViewBox n -> Path V2 n) ((HashMaps b n, ViewBox n) -> Diagram b -> Diagram b)-- ^
 --  A reference (\<use\>-tag) consists of:
 --
 -- * An Id
 --
 -- * A reference to an Id
+--
+-- * A viewbox so that percentages are relative to this viewbox
 --
 -- * Transformations applied to the reference
      | SubTree Bool Id (Maybe (ViewBox n)) (Maybe PreserveAR) (HashMaps b n -> Diagram b -> Diagram b) [Tag b n]-- ^
@@ -71,6 +73,8 @@ data Tag b n = Leaf Id (ViewBox n -> Path V2 n) ((HashMaps b n, ViewBox n) -> Di
 -- * A Bool: Are we in a section that will be rendered directly (not in a \<defs\>-section)
 --
 -- * An Id of subdiagram
+--
+-- * A viewbox so that percentages are relative to this viewbox
 --
 -- * A transformation or application of a style to a subdiagram
 --
@@ -108,7 +112,7 @@ data MeetOrSlice = Meet | Slice
 
 instance Show (Tag b n) where
   show (Leaf id1 _ _)  = "Leaf "      ++ (show id1) ++ "\n"
-  show (Reference selfid id1 wh f) = "Reference " ++ (show id1) ++ "\n"
+  show (Reference selfid id1 viewbox f) = "Reference " ++ (show id1) ++ "\n"
   show (SubTree b id1 viewbox ar f tree) = "Sub " ++ (show id1) ++ concat (map show tree) ++ "\n"
   show (StyleTag _)   = "Style "    ++ "\n"
   show (Grad id1 gr) = "Grad id:" ++ (show id1) -- ++ (show gr) ++ "\n"
@@ -131,7 +135,7 @@ nodes viewbox (ns,css,grads) (Leaf id1 path diagram)
   | otherwise  = (ns,css,grads)
 
 -- A Reference element for the <use>-tag
-nodes viewbox (ns,css,grads) (Reference selfId id1 wh f) = (ns,css,grads)
+nodes viewbox (ns,css,grads) (Reference selfId id1 vb f) = (ns,css,grads)
 
 nodes viewbox (ns,css,grads)                      (SubTree b id1 Nothing ar f children)
   | isJust id1 = myconcat [ (ns ++ [(fromJust id1, SubTree b id1 viewbox ar f children)],css,grads) ,
@@ -252,13 +256,14 @@ insertRefs :: (V b ~ V2, N b ~ n, RealFloat n, Show n) => (HashMaps b n, ViewBox
 insertRefs (maps,viewbox) (Leaf id1 path f) = (f (maps,viewbox)) # (if isJust id1 then named (T.unpack $ fromJust id1) else id)
 insertRefs (maps,viewbox) (Grad _ _) = mempty
 insertRefs (maps,viewbox) (Stop f) = mempty
-insertRefs (maps,viewbox) (Reference selfId id1 (w,h) styles)
-    | (isJust w && (fromJust w) <= 0) || (isJust h && (fromJust h) <= 0) = mempty
+insertRefs (maps,viewbox) (Reference selfId id1 path styles)
+    | (Diagrams.TwoD.Size.width r) <= 0 || (Diagrams.TwoD.Size.height r) <= 0 = mempty
     | otherwise = referencedDiagram # styles (maps,viewbox)
                                  -- # stretchViewBox (fromJust w) (fromJust h) viewboxPAR
                                     # cutOutViewBox viewboxPAR
                                     # (if isJust selfId then named (T.unpack $ fromJust selfId) else id)
-  where viewboxPAR = getViewboxPreserveAR subTree
+  where r = path viewbox
+        viewboxPAR = getViewboxPreserveAR subTree
         referencedDiagram = insertRefs (maps,viewbox) (makeSubTreeVisible viewbox subTree)
         subTree = lookUp (sel1 maps) id1
         getViewboxPreserveAR (SubTree _ id1 viewbox ar g children) = (viewbox, ar)
@@ -273,6 +278,7 @@ insertRefs (maps,viewbox) (SubTree True id1 viewb ar styles children) =
                # (if isJust id1 then named (T.unpack $ fromJust id1) else id)
   where subdiagram = mconcat (map (insertRefs (maps, fromMaybe viewbox viewb)) children)
 
+insertRefs (maps,viewbox) (StyleTag _) = mempty
 -------------------------------------------------------------------------------------------------------------------------------
 
 makeSubTreeVisible viewbox (SubTree _    id1 vb ar g children) =

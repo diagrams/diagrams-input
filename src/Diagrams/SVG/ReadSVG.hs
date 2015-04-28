@@ -102,7 +102,7 @@ import           Diagrams.TwoD.Size
 import           Diagrams.TwoD.Types
 import           Diagrams.SVG.Arguments
 import           Diagrams.SVG.Attributes
-import           Diagrams.SVG.Path (commands, commandsToTrails, PathCommand(..))
+import           Diagrams.SVG.Path (commands, commandsToPaths, PathCommand(..))
 import           Diagrams.SVG.Tree
 import           Filesystem.Path (FilePath, extension)
 import           Prelude hiding (FilePath)
@@ -241,7 +241,7 @@ parseG = tagName "{http://www.w3.org/2000/svg}g" gAttrs
       return $ SubTree True (id1 ca)
                             Nothing
                             Nothing
-                            ( (applyTr (parseTr tr)) . (applyStyleSVG st) )
+                            (\maps -> (applyStyleSVG st maps) . (applyTr (parseTr tr)) )
                             (reverse insideGs)
 
 gContent :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Tag b n))
@@ -310,9 +310,10 @@ parseUse = tagName "{http://www.w3.org/2000/svg}use" useAttrs
       let st hmaps = (parseStyles style hmaps) ++
                      (parsePA  pa  hmaps) ++
                      (cssStylesFromMap hmaps "use" (id1 ca) class_)
+      let path (minx,miny,vbW,vbH) = rect (p (minx,vbW) 0 w)  (p (miny,vbH) 0 h)
       return $ Reference (id1 ca)
                          (Diagrams.SVG.Attributes.fragment $ xlinkHref xlink)
-                         (parseToDouble w, parseToDouble h) -- TODO use p
+                         path
                          (f tr x y st) -- f gets supplied with the missing maps an viewbox when evaluating the Tag-tree
   where -- f :: Maybe Text -> Maybe Text -> Maybe Text -> (HashMaps b n -> [SVGStyle n a]) 
         -- -> (HashMaps b n, (n,n,n,n)) -> Diagram b -> Diagram b
@@ -440,8 +441,8 @@ parsePath = tagName "{http://www.w3.org/2000/svg}path" pathAttrs $
     let st hmaps = (parseStyles style hmaps) ++
                    (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "path" (id1 ca) class_)
-    let path viewbox = (mconcat $ commandsToTrails $ commands d) # applyTr (parseTr tr)
-    let f (maps,viewbox) = path viewbox # stroke
+    let path viewbox = (mconcat $ commandsToPaths $ commands d) # applyTr (parseTr tr)
+    let f (maps,viewbox) = path viewbox # strokePath
                                         # applyStyleSVG st maps
     return $ Leaf (id1 ca) path f
 

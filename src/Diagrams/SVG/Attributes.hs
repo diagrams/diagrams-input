@@ -82,6 +82,7 @@ import           Diagrams.TwoD.Types
 import           Text.CSS.Parse
 import           Debug.Trace
 import           Diagrams.Core.Transform
+import           Data.Digits
 
 ---------------------------------------------------
 
@@ -170,17 +171,21 @@ compose :: [a -> a] -> a -> a
 compose fs v = Prelude.foldl (flip (.)) id fs $ v
 
 parseDouble :: RealFloat n => Text -> n
-parseDouble l = either (const 0) (fromRational . toRational) (AT.parseOnly AT.double l)
+parseDouble l = either (const 0) (fromRational . toRational) (AT.parseOnly myDouble l)
 
 parseToDouble :: RealFloat n => Maybe Text -> Maybe n
-parseToDouble l | isJust l = either (const Nothing) (Just . fromRational . toRational) (AT.parseOnly AT.double (fromJust l))
+parseToDouble l | isJust l = either (const Nothing) (Just . fromRational . toRational) (AT.parseOnly myDouble (fromJust l))
                 | otherwise = Nothing
 pp = parseDouble . pack
 
--- myDouble = AT.choice[double, dotDouble]
--- dotDouble =
---   do AT.skipSpace
---      AT.char '.'
+myDouble = AT.choice [dotDouble, double]
+
+dotDouble =
+   do AT.skipSpace
+      AT.char '.'
+      frac <- AT.decimal
+      let denominator = fromIntegral (10^(length $ digits 10 frac))
+      return ((fromIntegral frac) / denominator)
 
 parsePoints :: RealFloat n => Text -> [(n, n)]
 parsePoints t = either (const []) id (AT.parseOnly (many' parsePoint) t)
@@ -248,7 +253,7 @@ parseTr =  catMaybes .
 
 parseTransform = AT.choice [matr, trans, scle, rot, skewX, skewY]
 
-applyTr trs = Debug.Trace.trace (show trs) $
+applyTr trs = -- Debug.Trace.trace (show trs) $
               compose (map getTransformations trs)
 
 getTransformations (Tr (T1 x))   =  translateX x
@@ -256,10 +261,10 @@ getTransformations (Tr (T2 x y)) = (translateX x) . (translateY y)
 
 -- | See <http://www.w3.org/TR/SVG11/coords.html#TransformMatrixDefined>
 getTransformations (Matrix a b c d e f)
-   = Debug.Trace.trace (show (Matrix a b c d e f) ++ show (angle, scX, scY, x, y)) --(matrixHomRep n))
+   = -- Debug.Trace.trace (show (Matrix a b c d e f) ++ show (angle, scX, scY, x, y)) --(matrixHomRep n))
      m
-  where m = (scaleX scX) . (scaleY scY) . (translateX x) . (translateY y) . (rotateBy angle)
-        n = translationX 1
+  where m = (translateX x) . (translateY y) . (scaleX scX) . (scaleY scY) . (rotateBy angle)
+        -- n = translationX 1
         (angle, scX, scY, x, y) = matrixDecompose (Matrix a b c d e f)
 
 getTransformations (Rotate (T1 angle)) = rotateBy angle
@@ -444,9 +449,9 @@ fragment x = fmap snd (parseTempl parseIRI x) -- look only for the text after "#
 initialStyles = lwL 1 . fc black . lineCap LineCapButt . lineJoin LineJoinMiter . lineMiterLimit 4 . lcA transparent
                -- fillRule nonzero -- TODO
                -- fillOpcacity 1 -- TODO
+               -- stroke-opacity 1 #
                -- stroke-dasharray none
                -- stroke-dashoffset 0 #
-               -- stroke-opacity 1 #
                -- display inline
 
 applyStyleSVG stylesFromMap hmap = compose (map getStyles (stylesFromMap hmap))
@@ -513,7 +518,7 @@ styleFillOpacity =
      styleFillOpacityVal
 
 styleFillOpacityVal =
-  do o <- double
+  do o <- myDouble
      return (FillOpacity $ fromRational $ toRational o)
 
 -- | Example: style="fill:#ffb13b" style="fill:red"
@@ -524,7 +529,7 @@ styleOpacity =
      styleFillOpacityVal
 
 styleOpacityVal =
-  do o <- double
+  do o <- myDouble
      return (Opacity $ fromRational $ toRational o)
 
 
@@ -561,7 +566,7 @@ styleStrokeWidthVal =
 -- | See <http://www.w3.org/TR/SVG/types.html#Length>
 styleLength =
   do AT.skipSpace
-     d <- AT.double
+     d <- myDouble
      AT.skipSpace
      AT.choice [ styleLengthWithUnit (fromRational $ toRational d),
                  lengthPercent (fromRational $ toRational d), return (Len (fromRational $ toRational d)) ]
@@ -658,7 +663,7 @@ styleStrokeMiterLimit =
      styleStrokeMiterLimitVal
 
 styleStrokeMiterLimitVal =
-  do l <- double
+  do l <- myDouble
      return $ StrokeMiterLimit $ (fromRational . toRational) l
 
 styleStrokeDashArray =
@@ -679,7 +684,7 @@ styleStrokeOpacity =
      styleStrokeOpacityVal
 
 styleStrokeOpacityVal =
-  do l <- double
+  do l <- myDouble
      return $ StrokeOpacity $ (fromRational . toRational) l
 
 styleStopColor =
@@ -827,13 +832,13 @@ parseViewBox vb w h | isJust parsedVB    = parsedVB -- This is how it should alw
 
 viewBox =
   do AT.skipSpace
-     minx <- double
+     minx <- myDouble
      AT.skipSpace
-     miny <- double
+     miny <- myDouble
      AT.skipSpace
-     width  <- double
+     width  <- myDouble
      AT.skipSpace
-     height <- double
+     height <- myDouble
      AT.skipSpace
      return ((fromRational . toRational) minx,
              (fromRational . toRational) miny,

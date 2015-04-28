@@ -8,7 +8,7 @@
 module Diagrams.SVG.Path
     (
     -- * Converting Path Commands
-      commandsToTrails
+      commandsToPaths
     , splittedCommands
     , outline
     , nextSegment
@@ -130,8 +130,8 @@ commands =  concat .
 
 
 -- | Convert path commands into trails
-commandsToTrails :: (RealFloat n) => [PathCommand n] -> [Path V2 n]
-commandsToTrails pathCommands = map fst $ foldl' outline [] (splittedCommands pathCommands)
+commandsToPaths :: (RealFloat n) => [PathCommand n] -> [Path V2 n]
+commandsToPaths pathCommands = map fst $ foldl' outline [] (splittedCommands pathCommands)
 
 
 -- | split list when there is a Z(closePath) and also when there is a (M)oveto command (keep the M)
