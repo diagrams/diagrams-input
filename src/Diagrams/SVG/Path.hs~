@@ -222,7 +222,7 @@ straight' = lineFromSegments . (:[]) . straight . r2
 
 bez3 point1 point2 point3 = lineFromSegments [bezier3 (r2 point1) (r2 point2) (r2 point3)]
 
--- | The arc command: see <http://www.w3.org/TR/SVG11/implnote.html#ArcImplementationNotes>
+-- | The arc command: see http://www.w3.org/TR/SVG11/implnote.html#ArcImplementationNotes
 -- To Do: scale if rx,ry,xAxisRot are such that there is no solution
 svgArc :: RealFloat n => (n, n) -> n -> n -> n -> (n,n) -> Trail' Line V2 n
 svgArc (rxx, ryy) xAxisRot largeArcFlag sweepFlag (x2, y2)

@@ -246,9 +246,10 @@ data Transform n = Tr (Tup n)
                | SkewY (Tup n) deriving Show
 
 parseTr :: RealFloat n => Maybe Text -> [Transform n]
-parseTr =  catMaybes .
+parseTr =  reverse .
+           catMaybes .
            (either (const []) id) .
-           ( AT.parseOnly (AT.many1 parseTransform)).  -- (separatedBy parseTransform " ") ).
+           ( AT.parseOnly (AT.many1 parseTransform)) .
            (fromMaybe empty)
 
 parseTransform = AT.choice [matr, trans, scle, rot, skewX, skewY]
