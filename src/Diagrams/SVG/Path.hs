@@ -121,7 +121,7 @@ tuple7 = do { a <- spaceDouble;
 
 
 -- | Convert a path string into path commands
-commands :: (RealFloat n) => Maybe Text -> [PathCommand n]
+commands :: (RealFloat n, Show n) => Maybe Text -> [PathCommand n]
 commands =  concat .
             catMaybes .
            (either (const []) id) .

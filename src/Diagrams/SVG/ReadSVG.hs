@@ -43,7 +43,7 @@ module Diagrams.SVG.ReadSVG
     , parseSwitch
     , parseDesc
     , parseTitle
-    , parseMetaData
+--    , parseMetaData
     -- * Parsing of basic shape tags
     , parseRect
     , parseCircle
@@ -226,8 +226,9 @@ svgContent :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (T
 svgContent = choose -- the likely most common are checked first
      [parseG, parsePath, parseCircle, parseRect, parseEllipse, parseLine, parsePolyLine, parsePolygon,
       parseDefs, parseSymbol, parseUse, -- structural elements
-      parseClipPath, parseText, parsePattern, parseImage, parseSwitch, parseSodipodi,
-      parseDesc, parseMetaData, parseTitle] -- descriptive Elements
+      parseClipPath, parseText, parsePattern, parseImage, -- parseSwitch, parseSodipodi,
+      skipArbitraryTag] -- should always be last!
+      -- parseDesc, parseMetaData, parseTitle] -- descriptive Elements
 
 ---------------------------------------------------------------------------
 -- | Parse \<g\>, see <http://www.w3.org/TR/SVG/struct.html#GElement>
@@ -248,9 +249,10 @@ gContent :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Tag
 gContent = choose -- the likely most common are checked first
      [parsePath, parseG, parseRect, parseCircle, parseEllipse, parseLine, parsePolyLine, parsePolygon,
       parseUse, parseSymbol, parseStyle, parseDefs, -- structural elements
-      parseText, parseClipPath, parseLinearGradient, parseRadialGradient, parseImage, parseFilter,
-      parsePattern, parseSwitch, parsePerspective,
-      parseDesc, parseMetaData, parseTitle, parsePathEffect] -- descriptive Elements
+      parseText, parseClipPath, parseLinearGradient, parseRadialGradient, parseImage, 
+      skipArbitraryTag] -- -- should always be last!
+--      parseFilter, parsePattern, parseSwitch, parsePerspective,
+--      parseDesc, parseMetaData, parseTitle, parsePathEffect] -- descriptive Elements
 
 ---------------------------------------------------------------------------
 -- | Parse \<defs\>, see <http://www.w3.org/TR/SVG/struct.html#DefsElement>
@@ -650,6 +652,8 @@ parseTitle = tagName "{http://www.w3.org/2000/svg}title" descAttrs
    do title <- content
       return $ Leaf (id1 ca) mempty mempty
 
+skipArbitraryTag = tagSkip (Leaf Nothing mempty mempty)
+
 -- | Parse \<meta\>, see <http://www.w3.org/TR/SVG/struct.html#DescriptionAndTitleElements>
 --
 -- @
@@ -668,6 +672,8 @@ parseTitle = tagName "{http://www.w3.org/2000/svg}title" descAttrs
 --  \</metadata\>
 -- @
 --
+{-  Maybe we implement it one day
+
 parseMetaData :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => Consumer Event m (Maybe (Tag b n))
 parseMetaData = tagName "{http://www.w3.org/2000/svg}metadata" ignoreAttrs
    $ \_ ->
@@ -689,7 +695,6 @@ parseWork = tagName "{http://creativecommons.org/ns#}Work" ignoreAttrs
    do -- c <- many workContent
       return $ Leaf Nothing mempty mempty
 
-{-
 workContent = choose [parseFormat, parseType, parseRDFTitle, parseDate, parseCreator,
                       parsePublisher, parseSource, parseLanguage, parseSubject, parseDescription]
 
@@ -708,7 +713,6 @@ parseSubject = tagName "{http://purl.org/dc/elements/1.1/}subject" ignoreAttrs
 -- parseBag :: (MonadThrow m, Metric (V b), Ord (N b), Floating (N b)) => Consumer Event m (Maybe (Tag b n))
 parseBag = tagName "{http://www.w3.org/1999/02/22-rdf-syntax-ns#}Bag" ignoreAttrs
    $ \_ -> do { c <- parseList ; return $ Leaf Nothing mempty mempty }
--}
 
 parseFormat = tagName "{http://purl.org/dc/elements/1.1/}format" ignoreAttrs
    $ \_ -> do { c <- content ; return $ Leaf Nothing mempty mempty }
@@ -736,7 +740,7 @@ parseList = tagName "{http://www.w3.org/1999/02/22-rdf-syntax-ns#}li" ignoreAttr
 
 parseDescription = tagName "{http://purl.org/dc/elements/1.1/}description" ignoreAttrs
    $ \_ -> do { c <- content ; return $ Leaf Nothing mempty mempty }
-
+-}
 ------------------------------------
 -- inkscape / sodipodi tags
 ------------------------------------

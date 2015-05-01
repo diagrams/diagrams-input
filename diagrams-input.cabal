@@ -18,6 +18,8 @@ Library
                       Diagrams.SVG.Tree
                       Diagrams.SVG.Arguments
                       Diagrams.TwoD.Image
+                      Text.XML.Stream.Parse
+                      Text.XML.Stream.Token
   Build-depends:      attoparsec >= 0.10
                     , base == 4.*
                     , base64-bytestring
@@ -39,7 +41,10 @@ Library
                     , text >= 0.11
                     , transformers
                     , unordered-containers
-                    , xml-conduit
                     , xml-types == 0.3.*
+                    , blaze-builder
+                    , blaze-markup
+                    , conduit-extra
+                    , data-default
   Hs-source-dirs:     src
   default-language:   Haskell2010

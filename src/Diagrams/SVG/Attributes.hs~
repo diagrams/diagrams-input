@@ -80,6 +80,7 @@ import           Diagrams.SVG.Path
 import           Diagrams.SVG.Tree
 import           Diagrams.TwoD.Types
 import           Text.CSS.Parse
+import           Debug.Trace
 import           Diagrams.Core.Transform
 import           Data.Digits
 
@@ -253,15 +254,19 @@ parseTr =  reverse .
 
 parseTransform = AT.choice [matr, trans, scle, rot, skewX, skewY]
 
-applyTr trs = compose (map getTransformations trs)
+applyTr trs = -- Debug.Trace.trace (show trs) $
+              compose (map getTransformations trs)
 
 getTransformations (Tr (T1 x))   =  translateX x
 getTransformations (Tr (T2 x y)) = (translateX x) . (translateY y)
 
 -- | See <http://www.w3.org/TR/SVG11/coords.html#TransformMatrixDefined>
 getTransformations (Matrix a b c d e f)
-   = (translateX x) . (translateY y) . (scaleX scX) . (scaleY scY) . (rotateBy angle)
-  where (angle, scX, scY, x, y) = matrixDecompose (Matrix a b c d e f)
+   = -- Debug.Trace.trace (show (Matrix a b c d e f) ++ show (angle, scX, scY, x, y)) --(matrixHomRep n))
+     m
+  where m = (translateX x) . (translateY y) . (scaleX scX) . (scaleY scY) . (rotateBy angle)
+        -- n = translationX 1
+        (angle, scX, scY, x, y) = matrixDecompose (Matrix a b c d e f)
 
 getTransformations (Rotate (T1 angle)) = rotateBy angle
 getTransformations (Rotate (T3 angle x y)) = id -- rotationAbout (p2 (x,y)) (angle)
