@@ -182,13 +182,13 @@ image img
 -- @
 -- 
 readSVGFile :: (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Renderable (DImage b n Embedded) b, -- TODO upper example
-                Typeable b, Typeable n, Show n) => FilePath -> IO (Either String (Diagram b))
+                Typeable b, Typeable n) => FilePath -> IO (Either String (Diagram b))
 readSVGFile fp = if (extension fp) /= (Just "svg") then return $ Left "Not a svg file" else
   runResourceT $ runEitherT $ do
     tree <- lift (parseFile def fp $$ force "error in parseSVG" parseSVG)
     right (diagram tree)
 
-diagram :: (RealFloat n, V b ~ V2, n ~ N b, Typeable n, Show n) => Tag b n -> Diagram b
+diagram :: (RealFloat n, V b ~ V2, n ~ N b, Typeable n) => Tag b n -> Diagram b
 diagram tr = (insertRefs ((nmap,cssmap,expandedGradMap),(0,0,100,100)) tr) # scaleY (-1) # initialStyles
   where
     (ns,css,grad) = nodes Nothing ([],[],[]) tr
@@ -201,10 +201,10 @@ diagram tr = (insertRefs ((nmap,cssmap,expandedGradMap),(0,0,100,100)) tr) # sca
 -- Basic SVG structure
 
 class (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n, Typeable b,
-       Renderable (DImage b n Embedded) b, Show n) => InputConstraints b n
+       Renderable (DImage b n Embedded) b) => InputConstraints b n
 
 instance (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n, Typeable b,
-          Renderable (DImage b n Embedded) b, Show n) => InputConstraints b n
+          Renderable (DImage b n Embedded) b) => InputConstraints b n
 
 -- | Parse \<svg\>, see <http://www.w3.org/TR/SVG/struct.html#SVGElement>
 parseSVG :: (MonadThrow m, InputConstraints b n) => Sink Event m (Maybe (Tag b n))
@@ -305,7 +305,7 @@ parseSymbol = tagName "{http://www.w3.org/2000/svg}symbol" symbolAttrs $
 
 -----------------------------------------------------------------------------------
 -- | Parse \<use\>, see <http://www.w3.org/TR/SVG/struct.html#UseElement>
-parseUse :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Typeable n, Show n) => Consumer Event m (Maybe (Tag b n))
+parseUse :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Typeable n) => Consumer Event m (Maybe (Tag b n))
 parseUse = tagName "{http://www.w3.org/2000/svg}use" useAttrs
    $ \(ca,cpa,gea,pa,xlink,class_,style,ext,tr,x,y,w,h) ->
    do -- insideUse <- many useContent
@@ -471,7 +471,7 @@ clipPathContent = choose [parseRect, parseCircle, parseEllipse, parseLine, parse
 -- | Parse \<image\>, see <http://www.w3.org/TR/SVG/struct.html#ImageElement>
 -- <image width="28" xlink:href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAADCAYAAACAjW/aAAAABmJLR0QA/wD/AP+gvaeTAAAAB3RJTUUH2AkMDx4ErQ9V0AAAAClJREFUGJVjYMACGhoa/jMwMPyH0kQDYvQxYpNsaGjAyibCQrL00dSHACypIHXUNrh3AAAAAElFTkSuQmCC" height="3"/>
 parseImage :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Renderable (DImage b (N b) Embedded) b,
-              Typeable b, Typeable n, Show n) => Consumer Event m (Maybe (Tag b n))
+              Typeable b, Typeable n) => Consumer Event m (Maybe (Tag b n))
 parseImage = tagName "{http://www.w3.org/2000/svg}image" imageAttrs $
   \(ca,cpa,gea,xlink,pa,class_,style,ext,ar,tr,x,y,w,h) ->
   do return $ Leaf (id1 ca) mempty (\(_,(minx,miny,vbW,vbH)) -> (dataUriToImage (xlinkHref xlink) (p (minx,vbW) 0 w) (p (miny,vbH) 0 h))
@@ -541,7 +541,7 @@ parseTSpan = tagName "{http://www.w3.org/2000/svg}tspan" ignoreAttrs $
 -- | Parse \<linearGradient\>, see <http://www.w3.org/TR/SVG/pservers.html#LinearGradientElement>
 -- example: <linearGradient id="SVGID_2_" gradientUnits="userSpaceOnUse" x1="68.2461" y1="197.6797"
 --           x2="52.6936" y2="237.5337" gradientTransform="matrix(1 0 0 -1 -22.5352 286.4424)">
-parseLinearGradient :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Show n) => Consumer Event m (Maybe (Tag b n))
+parseLinearGradient :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => Consumer Event m (Maybe (Tag b n))
 parseLinearGradient = tagName "{http://www.w3.org/2000/svg}linearGradient" linearGradAttrs $
   \(ca,pa,xlink,class_,style,ext,x1,y1,x2,y2,gradientUnits,gradientTransform,spreadMethod) -> -- TODO gradientUnits
   do gs <- many gradientContent
@@ -565,7 +565,7 @@ gradientContent = choose [parseStop, parseMidPointStop] -- parseSet,
    --   parseDesc, parseMetaData, parseTitle] -- descriptive Elements (rarely used here, so tested at the end)
 
 -- | Parse \<radialGradient\>, see <http://www.w3.org/TR/SVG/pservers.html#RadialGradientElement>
-parseRadialGradient :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Show n) => Consumer Event m (Maybe (Tag b n))
+parseRadialGradient :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => Consumer Event m (Maybe (Tag b n))
 parseRadialGradient = tagName "{http://www.w3.org/2000/svg}radialGradient" radialGradAttrs $ -- TODO gradientUnits
   \(ca,pa,xlink,class_,style,ext,cx,cy,r,fx,fy,gradientUnits,gradientTransform,spreadMethod) -> 
   do gs <- many gradientContent

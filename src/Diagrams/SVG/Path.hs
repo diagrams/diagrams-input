@@ -121,7 +121,7 @@ tuple7 = do { a <- spaceDouble;
 
 
 -- | Convert a path string into path commands
-commands :: (RealFloat n, Show n) => Maybe Text -> [PathCommand n]
+commands :: RealFloat n => Maybe Text -> [PathCommand n]
 commands =  concat .
             catMaybes .
            (either (const []) id) .
@@ -130,7 +130,7 @@ commands =  concat .
 
 
 -- | Convert path commands into trails
-commandsToPaths :: (RealFloat n) => [PathCommand n] -> [Path V2 n]
+commandsToPaths :: RealFloat n => [PathCommand n] -> [Path V2 n]
 commandsToPaths pathCommands = map fst $ foldl' outline [] (splittedCommands pathCommands)
 
 
@@ -177,8 +177,6 @@ outline paths cs = paths ++ [(newPath,newPoint)]
            | otherwise      = startPoint
 
   (ctrlPoint, startPoint, trail) = foldl' nextSegment ((x,y), (x,y), O []) cs
-
---  traceP (contr,point,path) = Debug.Trace.trace (show point) (contr,point,path)
 
   (trx,try) | null cs   = (0,0)
             | otherwise = sel2 $ nextSegment ((x,y), (x,y), O []) (head cs) -- cs usually always starts with a M-command,
@@ -228,8 +226,7 @@ svgArc :: RealFloat n => (n, n) -> n -> n -> n -> (n,n) -> Trail' Line V2 n
 svgArc (rxx, ryy) xAxisRot largeArcFlag sweepFlag (x2, y2)
      | x2 == 0 && y2 == 0 = emptyLine -- spec F6.2
      | rx == 0 || ry == 0 = straight' (x2,y2) -- spec F6.2
-     | otherwise = mempty
---     | otherwise = arc' (-rx) (theta1 @@ rad) ((theta1 + dtheta21) @@ rad) # scaleY (ry/rx) # rotateBy xAxisRot
+     | otherwise = unLoc (arc' 1 dir1 (dtheta @@ rad) # scaleY ry # scaleX rx # rotate (phi @@ rad))
   where rx | rxx < 0   = -rxx  -- spec F6.2
            | otherwise =  rxx
         ry | ryy < 0   = -ryy  -- spec F6.2
@@ -238,26 +235,28 @@ svgArc (rxx, ryy) xAxisRot largeArcFlag sweepFlag (x2, y2)
            | otherwise         = 1 -- spec F6.2
         fs | sweepFlag == 0 = 0
            | otherwise      = 1 -- spec F6.2
+        phi = xAxisRot * pi / 180
         (x1,y1) = (0,0)
         x1x2 = (x1 - x2)/2
         y1y2 = (y1 - y2)/2
-        x1' =  (cos xAxisRot) * x1x2 + (sin xAxisRot) * y1y2
-        y1' = -(sin xAxisRot) * x1x2 + (cos xAxisRot) * y1y2
-        s = (rx*rx*ry*ry - rx*rx*y1'*y1' - ry*ry*x1'*x1') / ( rx*rx*y1'*y1' + ry*ry*x1'*x1' )
-        root = sqrt ( (rx*rx*ry*ry - rx*rx*y1'*y1' - ry*ry*x1'*x1') / ( rx*rx*y1'*y1' + ry*ry*x1'*x1' ) )
+        x1' =  (cos phi) * x1x2 + (sin phi) * y1y2
+        y1' = -(sin phi) * x1x2 + (cos phi) * y1y2
+        s = (rx*rx*ry*ry - rx*rx*y1'*y1' - ry*ry*x1'*x1') / (rx*rx*y1'*y1' + ry*ry*x1'*x1' )
+        root | s <= 0 = 0 -- Should only happen because of rounding errors, s usually being very close to 0
+             | otherwise = sqrt s -- This bug happened: <https://ghc.haskell.org/trac/ghc/ticket/10010>
         cx' | fa /= fs  =   root * rx * y1' / ry
             | otherwise = - root * rx * y1' / ry
         cy' | fa /= fs  = - root * ry * x1' / rx
             | otherwise =   root * ry * x1' / rx
-        cx = (cos xAxisRot) * cx' - (sin xAxisRot) * cy' + ((x1+x2)/2)
-        cy = (sin xAxisRot) * cx' + (cos xAxisRot) * cy' + ((y1+y2)/2)
-        angle u v = (signof u v) * (acos (  (scalar u v) / ( (len u) * (len v) )  ))
-        signof (ux,uy) (vx,vy) | ux * vy - uy * vx > 0 =   1
-                               | otherwise             = - 1
-        theta1 = angle (1,0) ((x1'-cx')/rx, (y1'-cy')/ry)
-        dtheta = angle ((x1'-cx')/rx, (y1'-cy')/ry)  ((-x1'-cx')/rx, (-y1'-cy')/ry)
-        dtheta21 | fs == 0   = if dtheta > 0 then dtheta - (2*pi) else dtheta
-                 | otherwise = if dtheta < 0 then dtheta + (2*pi) else dtheta
-        scalar (ux,uy) (vx,vy) = ux * vx + uy * vy
-        len (x,y) = sqrt (x*x + y*y)
+        cx = (cos phi) * cx' - (sin phi) * cy' + ((x1+x2)/2)
+        cy = (sin phi) * cx' + (cos phi) * cy' + ((y1+y2)/2)
+        dir1 = dirBetween (p2 ((x1'-cx')/rx, (y1'-cy')/ry)) origin
+        v1 = r2 (( x1'-cx')/rx,  (y1'-cy')/ry)
+        v2 = r2 ((-x1'-cx')/rx, (-y1'-cy')/ry)
+        -- angleV1V2 is unfortunately necessary probably because of something like <https://ghc.haskell.org/trac/ghc/ticket/10010>
+        angleV1V2 | (signorm v1 `dot` signorm v2) >=  1 = (acosA   1 ) ^. rad
+                  | (signorm v1 `dot` signorm v2) <= -1 = (acosA (-1)) ^. rad
+                  | otherwise = (angleBetween v1 v2) ^. rad
+        dtheta | fs == 0   = if angleV1V2 > 0 then angleV1V2 - (2*pi) else angleV1V2
+               | otherwise = if angleV1V2 < 0 then angleV1V2 + (2*pi) else angleV1V2
 

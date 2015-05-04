@@ -129,7 +129,7 @@ instance Show (Tag b n) where
 -- * CSS classes with corresponding (attribute,value)-pairs, from the <defs>-tag
 --
 -- * Gradients
-nodes :: Show n => Maybe (ViewBox n) -> (Nodelist b n, CSSlist, Gradlist n) -> Tag b n -> (Nodelist b n, CSSlist, Gradlist n)
+nodes :: Maybe (ViewBox n) -> (Nodelist b n, CSSlist, Gradlist n) -> Tag b n -> (Nodelist b n, CSSlist, Gradlist n)
 nodes viewbox (ns,css,grads) (Leaf id1 path diagram)
   | isJust id1 = (ns ++ [(fromJust id1, Leaf id1 path diagram)],css,grads)
   | otherwise  = (ns,css,grads)
@@ -251,7 +251,7 @@ lookUp hmap i | (isJust i) && (isJust l) = fromJust l
 
 -- | Evaluate the tree into a diagram by inserting xlink:href references from nodes and gradients, 
 --   applying clipping and passing the viewbox to the leafs
-insertRefs :: (V b ~ V2, N b ~ n, RealFloat n, Show n) => (HashMaps b n, ViewBox n) -> Tag b n -> Diagram b
+insertRefs :: (V b ~ V2, N b ~ n, RealFloat n) => (HashMaps b n, ViewBox n) -> Tag b n -> Diagram b
 
 insertRefs (maps,viewbox) (Leaf id1 path f) = (f (maps,viewbox)) # (if isJust id1 then named (T.unpack $ fromJust id1) else id)
 insertRefs (maps,viewbox) (Grad _ _) = mempty
