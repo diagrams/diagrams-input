@@ -13,7 +13,7 @@ In the future it would be nice to have:
 
 # Usage
 
-See the diagrams manual: http://projects.haskell.org/diagrams/doc/manual.html#images
+See the [diagrams manual] (http://projects.haskell.org/diagrams/doc/manual.html#images)
 
 # Development
 The SVG parser evolved like maybe most others also did: By taking some SVG images, focussing on one image, getting it displayed correctly. See if the changes affect other images positively. Figuring out what is the most important thing to fix next. The SVG 1.1 spec was used.
@@ -32,7 +32,7 @@ For testing purposes [diagrams-input-test] (https://github.com/diagrams/diagrams
 ## Overview
 At first the svg parser was a separate library. In order to have only one function to load both raster and vector images and because of cyclic dependencies, Image.hs had to be outsourced from diagrams-lib into diagrams-input. Now the backends that use the raster image type need to also depend on diagrams-input:
 
-![dependencies](https://raw.githubusercontent.com/diagrams/diagrams-input/master/svgs/deps.svg "Part of the dependencies")
+![dependencies](https://github.com/diagrams/diagrams-input/raw/master/svgs/deps.svg "Part of the dependencies")
 
 It is not sure if this is the best solution but the alternative I could come up would be to integrate the parser into diagrams-lib.
 
