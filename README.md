@@ -32,7 +32,7 @@ For testing purposes [diagrams-input-test] (https://github.com/diagrams/diagrams
 ## Overview
 At first the svg parser was a separate library. In order to have only one function to load both raster and vector images and because of cyclic dependencies, Image.hs had to be outsourced from diagrams-lib into diagrams-input. Now the backends that use the raster image type need to also depend on diagrams-input:
 
-![dependencies](https://github.com/diagrams/diagrams-input/svgs/deps.svg "Part of the dependencies")
+![dependencies](https://raw.githubusercontent.com/diagrams/diagrams-input/master/svgs/deps.svg "Part of the dependencies")
 
 It is not sure if this is the best solution but the alternative I could come up would be to integrate the parser into diagrams-lib.
 
