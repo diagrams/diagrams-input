@@ -1,15 +1,15 @@
 # diagrams-input
 
-This project parses several input formats for diagrams:
+diagrams-input provides functions to parse several input formats for diagrams:
 - Raster images: PNG, JPG, ...  (using JuicyPixels)
-- SVG (using xml-conduit and attoparsec)
+- SVG (using [xml-conduit](https://github.com/snoyberg/xml/tree/master/xml-conduit) and [attoparsec](https://github.com/bos/attoparsec))
 
 In the future it would be nice to have:
-- html + css (We need css anyway if we want to implement the svg parser properly)
-  html could be a good exercise for developing layouting functions.
-- pdf
-- collada (3d)
-- obj (3d)
+- HTML + CSS (We need CSS anyway if we want to implement the SVG parser properly).
+  HTML could be a good exercise for developing layouting functions.
+- PDF
+- Collada (3d)
+- Obj (3d)
 
 # Usage
 
@@ -30,10 +30,7 @@ For testing purposes [diagrams-input-test] (https://github.com/diagrams/diagrams
 - [ ] display-attribute
 
 ## Overview
-At first the svg parser was a separate library. In order to have only one function to load both raster and vector images and because of cyclic dependencies, Image.hs had to be outsourced from diagrams-lib into diagrams-input. Now the backends that use the raster image type need to also depend on diagrams-input:
-
-![dependencies](https://github.com/diagrams/diagrams-input/raw/master/svgs/deps.svg "Part of the dependencies")
-
+At first the svg parser was a separate library. In order to have only one function to load both raster and vector images and because of cyclic dependencies, loadImageEmb and loadImageExt from Image.hs had to be outsourced from diagrams-lib into diagrams-input.
 It is not sure if this is the best solution but the alternative I could come up would be to integrate the parser into diagrams-lib.
 
 ## A Walk through the Code
