@@ -64,14 +64,7 @@ module Diagrams.SVG.ReadSVG
     , parseImage
     , parseText
     -- * Parsing data uri in <image>
-    , image
     , dataUriToImage
-    , ImageData(..)
-    , DImage(..)
-    , Embedded
-    , External
-    , Native
-    , FP(..)
     ) where
 
 import           Codec.Picture
@@ -111,7 +104,7 @@ import           Text.CSS.Parse (parseBlocks)
 
 -- The following code was included here, because parseImage needs it
 -- and there can be no cyclic dependency (ReadSVG.hs importing Image.hs and vice versa)
-
+{-
 type instance V (DImage b n a) = V2
 type instance N (DImage b n a) = n
 
@@ -161,7 +154,7 @@ image img
   where
     r = rect (fromIntegral w) (fromIntegral h)
     DImage _ w h _ = img
-
+-}
 --------------------------------------------------------------------------------------
 -- | Main library function
 -- 
@@ -182,7 +175,7 @@ image img
 -- @
 -- 
 readSVGFile :: (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Renderable (DImage b n Embedded) b, -- TODO upper example
-                Typeable b, Typeable n) => FilePath -> IO (Either String (Diagram b))
+                Typeable b, Typeable n, Show n) => FilePath -> IO (Either String (Diagram b))
 readSVGFile fp = if (extension fp) /= (Just "svg") then return $ Left "Not a svg file" else
   runResourceT $ runEitherT $ do
     tree <- lift (parseFile def fp $$ force "error in parseSVG" parseSVG)
@@ -200,10 +193,10 @@ diagram tr = (insertRefs ((nmap,cssmap,expandedGradMap),(0,0,100,100)) tr) # sca
 -------------------------------------------------------------------------------------
 -- Basic SVG structure
 
-class (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n, Typeable b,
+class (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n, Typeable b, Show n,
        Renderable (DImage b n Embedded) b) => InputConstraints b n
 
-instance (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n, Typeable b,
+instance (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n, Typeable b, Show n,
           Renderable (DImage b n Embedded) b) => InputConstraints b n
 
 -- | Parse \<svg\>, see <http://www.w3.org/TR/SVG/struct.html#SVGElement>
@@ -226,7 +219,7 @@ svgContent :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (T
 svgContent = choose -- the likely most common are checked first
      [parseG, parsePath, parseCircle, parseRect, parseEllipse, parseLine, parsePolyLine, parsePolygon,
       parseDefs, parseSymbol, parseUse, -- structural elements
-      parseClipPath, parseText, parsePattern, parseImage, -- parseSwitch, parseSodipodi,
+      parseClipPath, parsePattern, parseImage, -- parseText, parseSwitch, parseSodipodi,
       skipArbitraryTag] -- should always be last!
       -- parseDesc, parseMetaData, parseTitle] -- descriptive Elements
 
@@ -245,13 +238,13 @@ parseG = tagName "{http://www.w3.org/2000/svg}g" gAttrs
                             (\maps -> (applyStyleSVG st maps) . (applyTr (parseTr tr)) )
                             (reverse insideGs)
 
-gContent :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Tag b n))
+gContent :: (MonadThrow m, InputConstraints b n, Show n) => Consumer Event m (Maybe (Tag b n))
 gContent = choose -- the likely most common are checked first
      [parsePath, parseG, parseRect, parseCircle, parseEllipse, parseLine, parsePolyLine, parsePolygon,
       parseUse, parseSymbol, parseStyle, parseDefs, -- structural elements
-      parseText, parseClipPath, parseLinearGradient, parseRadialGradient, parseImage, 
+      parseClipPath, parseLinearGradient, parseRadialGradient, parseImage, 
       skipArbitraryTag] -- -- should always be last!
---      parseFilter, parsePattern, parseSwitch, parsePerspective,
+--      parseText, parseFilter, parsePattern, parseSwitch, parsePerspective,
 --      parseDesc, parseMetaData, parseTitle, parsePathEffect] -- descriptive Elements
 
 ---------------------------------------------------------------------------
@@ -437,7 +430,7 @@ parsePolygon = tagName "{http://www.w3.org/2000/svg}polygon" polygonAttrs $
 
 --------------------------------------------------------------------------------------------------
 -- | Parse \<path\>,  see <http://www.w3.org/TR/SVG11/paths.html#PathElement>
-parsePath :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Tag b n))
+parsePath :: (MonadThrow m, InputConstraints b n, Show n) => Consumer Event m (Maybe (Tag b n))
 parsePath = tagName "{http://www.w3.org/2000/svg}path" pathAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,d,pathLength) -> do
     let st hmaps = (parseStyles style hmaps) ++
@@ -450,7 +443,7 @@ parsePath = tagName "{http://www.w3.org/2000/svg}path" pathAttrs $
 
 -------------------------------------------------------------------------------------------------
 -- | Parse \<clipPath\>, see <http://www.w3.org/TR/SVG/masking.html#ClipPathElement>
-parseClipPath :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Tag b n))
+parseClipPath :: (MonadThrow m, InputConstraints b n, Show n) => Consumer Event m (Maybe (Tag b n))
 parseClipPath = tagName "{http://www.w3.org/2000/svg}clipPath" clipPathAttrs $
   \(cpa,ca,pa,class_,style,ext,ar,viewbox) -> do
     insideClipPath <- many clipPathContent
@@ -463,7 +456,7 @@ parseClipPath = tagName "{http://www.w3.org/2000/svg}clipPath" clipPathAttrs $
                      (applyStyleSVG st)
                      (reverse insideClipPath)
 
-clipPathContent :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Tag b n))
+clipPathContent :: (MonadThrow m, InputConstraints b n, Show n) => Consumer Event m (Maybe (Tag b n))
 clipPathContent = choose [parseRect, parseCircle, parseEllipse, parseLine, parsePolyLine, parsePath,
                           parsePolygon, parseText, parseUse]
 

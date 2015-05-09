@@ -36,6 +36,7 @@ import Diagrams.Path
 import Diagrams.Segment
 import Diagrams.TwoD.Types
 import Diagrams.Prelude
+import Debug.Trace
 
 data AbsRel = Abs | Rel deriving Show
 data PathCommand n =
@@ -112,16 +113,17 @@ tuple6 = do { a <- spaceDouble;
 
 tuple7 = do { a <- spaceDouble;
               b <- doubleWithOptional ',';
-              c <- spaceDouble;
-              AT.skipSpace; d <- decimal;
+              c <- doubleWithOptional ',';
+              d <- decimal `withOptional` ',';
               e <- decimal `withOptional` ',';
-              f <- spaceDouble;
+              f <- doubleWithOptional ',';
               g <- doubleWithOptional ',';
-              return (a, b, c, fromIntegral d, fromIntegral e, f, g) }
+              return $ Debug.Trace.trace (show (a, b, c, fromIntegral d, fromIntegral e, f, g)) 
+                       (a, b, c, fromIntegral d, fromIntegral e, f, g) }
 
 
 -- | Convert a path string into path commands
-commands :: RealFloat n => Maybe Text -> [PathCommand n]
+commands :: (RealFloat n, Show n) => Maybe Text -> [PathCommand n]
 commands =  concat .
             catMaybes .
            (either (const []) id) .
@@ -130,7 +132,7 @@ commands =  concat .
 
 
 -- | Convert path commands into trails
-commandsToPaths :: RealFloat n => [PathCommand n] -> [Path V2 n]
+commandsToPaths :: (RealFloat n, Show n) => [PathCommand n] -> [Path V2 n]
 commandsToPaths pathCommands = map fst $ foldl' outline [] (splittedCommands pathCommands)
 
 
@@ -163,7 +165,7 @@ getTrail (O a)      = a
 
 -- | Take the endpoint of the latest path, append another path that has been generated from the path commands
 -- and return this whole path
-outline :: RealFloat n => [(Path V2 n, (n, n))] -> [PathCommand n] -> [(Path V2 n, (n, n))]
+outline :: (RealFloat n, Show n) => [(Path V2 n, (n, n))] -> [PathCommand n] -> [(Path V2 n, (n, n))]
 outline paths cs = paths ++ [(newPath,newPoint)]
  where
   newPath = translate (r2 (trx,try)) $
@@ -188,7 +190,7 @@ outline paths cs = paths ++ [(newPath,newPoint)]
 
 -- | The last control point and end point of the last path are needed to calculate the next line to append
 --             endpoint -> (controlPoint, startPoint, line) ->
-nextSegment :: RealFloat n => ((n,n), (n,n), ClosedTrail [Trail' Line V2 n]) -> PathCommand n -> ( (n,n), (n,n), ClosedTrail [Trail' Line V2 n])
+nextSegment :: (RealFloat n, Show n) => ((n,n), (n,n), ClosedTrail [Trail' Line V2 n]) -> PathCommand n -> ( (n,n), (n,n), ClosedTrail [Trail' Line V2 n])
 nextSegment (ctrlPoint, startPoint, O trail) Z  = (ctrlPoint, startPoint, Closed trail)
 nextSegment (_, _,       _      ) (M Abs point) = (point, point, O [])
 nextSegment (_, (x0,y0), _      ) (M Rel (x,y)) = ((x+x0, y+y0), (x+x0, y+y0), O [])
@@ -222,11 +224,12 @@ bez3 point1 point2 point3 = lineFromSegments [bezier3 (r2 point1) (r2 point2) (r
 
 -- | The arc command: see <http://www.w3.org/TR/SVG11/implnote.html#ArcImplementationNotes>
 -- To Do: scale if rx,ry,xAxisRot are such that there is no solution
-svgArc :: RealFloat n => (n, n) -> n -> n -> n -> (n,n) -> Trail' Line V2 n
+svgArc :: (RealFloat n, Show n) => (n, n) -> n -> n -> n -> (n,n) -> Trail' Line V2 n
 svgArc (rxx, ryy) xAxisRot largeArcFlag sweepFlag (x2, y2)
      | x2 == 0 && y2 == 0 = emptyLine -- spec F6.2
      | rx == 0 || ry == 0 = straight' (x2,y2) -- spec F6.2
-     | otherwise = unLoc (arc' 1 dir1 (dtheta @@ rad) # scaleY ry # scaleX rx # rotate (phi @@ rad))
+     | otherwise = Debug.Trace.trace (show (dtheta) ++ show dir1) $
+                   unLoc (arc' 1 dir1 (dtheta @@ rad) # scaleY ry # scaleX rx # rotate (phi @@ rad))
   where rx | rxx < 0   = -rxx  -- spec F6.2
            | otherwise =  rxx
         ry | ryy < 0   = -ryy  -- spec F6.2
@@ -256,7 +259,7 @@ svgArc (rxx, ryy) xAxisRot largeArcFlag sweepFlag (x2, y2)
         -- angleV1V2 is unfortunately necessary probably because of something like <https://ghc.haskell.org/trac/ghc/ticket/10010>
         angleV1V2 | (signorm v1 `dot` signorm v2) >=  1 = (acosA   1 ) ^. rad
                   | (signorm v1 `dot` signorm v2) <= -1 = (acosA (-1)) ^. rad
-                  | otherwise = (angleBetween v1 v2) ^. rad
+                  | otherwise = (signedAngleBetween v2 v1) ^. rad
         dtheta | fs == 0   = if angleV1V2 > 0 then angleV1V2 - (2*pi) else angleV1V2
                | otherwise = if angleV1V2 < 0 then angleV1V2 + (2*pi) else angleV1V2
 
