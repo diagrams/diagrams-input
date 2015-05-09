@@ -1,6 +1,6 @@
 # diagrams-input
 
-This project parses several input formats for diagrams:
+diagrams-input provides functions to parse several input formats for diagrams:
 - Raster images: PNG, JPG, ...  (using JuicyPixels)
 - SVG (using [xml-conduit](https://github.com/snoyberg/xml/tree/master/xml-conduit) and [attoparsec](https://github.com/bos/attoparsec))
 
