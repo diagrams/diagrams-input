@@ -36,7 +36,6 @@ import Diagrams.Path
 import Diagrams.Segment
 import Diagrams.TwoD.Types
 import Diagrams.Prelude
-import Debug.Trace
 
 data AbsRel = Abs | Rel deriving Show
 data PathCommand n =
@@ -118,7 +117,7 @@ tuple7 = do { a <- spaceDouble;
               e <- decimal `withOptional` ',';
               f <- doubleWithOptional ',';
               g <- doubleWithOptional ',';
-              return $ Debug.Trace.trace (show (a, b, c, fromIntegral d, fromIntegral e, f, g)) 
+              return $ -- Debug.Trace.trace (show (a, b, c, fromIntegral d, fromIntegral e, f, g)) 
                        (a, b, c, fromIntegral d, fromIntegral e, f, g) }
 
 
@@ -228,7 +227,7 @@ svgArc :: (RealFloat n, Show n) => (n, n) -> n -> n -> n -> (n,n) -> Trail' Line
 svgArc (rxx, ryy) xAxisRot largeArcFlag sweepFlag (x2, y2)
      | x2 == 0 && y2 == 0 = emptyLine -- spec F6.2
      | rx == 0 || ry == 0 = straight' (x2,y2) -- spec F6.2
-     | otherwise = Debug.Trace.trace (show (dtheta) ++ show dir1) $
+     | otherwise = -- Debug.Trace.trace (show (dtheta) ++ show dir1) $
                    unLoc (arc' 1 dir1 (dtheta @@ rad) # scaleY ry # scaleX rx # rotate (phi @@ rad))
   where rx | rxx < 0   = -rxx  -- spec F6.2
            | otherwise =  rxx

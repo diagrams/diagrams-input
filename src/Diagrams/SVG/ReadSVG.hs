@@ -10,17 +10,18 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 
---------------------------------------------------------------------
+-------------------------------------------------------------------
 -- |
--- Module    : Diagrams.SVG.ReadSVG
--- Copyright : (c) 2015 Tillmann Vogt <tillk.vogt@googlemail.com>
--- License   : BSD3
+-- Module     : Diagrams.SVG.ReadSVG
+-- Copyright  : (c) 2015 Tillmann Vogt <tillk.vogt@googlemail.com>
+-- License    :  BSD-style (see LICENSE)
+-- Maintainer :  diagrams-discuss@googlegroups.com
 --
--- Maintainer: diagrams-discuss@googlegroups.com
--- Stability : stable
+-- Maintainer : diagrams-discuss@googlegroups.com
+-- Stability  : stable
 -- Portability: portable
 
------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------
 
 module Diagrams.SVG.ReadSVG
     (
@@ -102,59 +103,6 @@ import           Prelude hiding (FilePath)
 import           Text.XML.Stream.Parse hiding (parseText)
 import           Text.CSS.Parse (parseBlocks)
 
--- The following code was included here, because parseImage needs it
--- and there can be no cyclic dependency (ReadSVG.hs importing Image.hs and vice versa)
-{-
-type instance V (DImage b n a) = V2
-type instance N (DImage b n a) = n
-
-instance Fractional n => Transformable (DImage b n a) where
-  transform t1 (DImage iD w h t2) = DImage iD w h (t1 <> t2)
-
-instance Fractional n => HasOrigin (DImage b n a) where
-  moveOriginTo p = translate (origin .-. p)
-
-data Embedded deriving Typeable
-data External deriving Typeable
-data Native (t :: *) deriving Typeable
-data FP b = FP FilePath
-
--------------------------------------------------------------------------------
--- | 'ImageData' is either 'Embedded' or a reference tagged as 'External'.
---   The image data is a JuicyPixels @DynamicImage@ or a diagram that contains
---   vector and raster graphics (e.g. SVG).
---   Additionally 'Native' is provided for external libraries to hook into.
-data ImageData t b where
-  ImageRaster :: DynamicImage -> ImageData Embedded b
-  ImageRef    :: FP b -> ImageData External b -- references also need propagated type class constraints of b
-  ImageDiagram :: Diagram b -> ImageData Embedded b
-  ImageDiagramRef :: FilePath -> ImageData External b
-  ImageNative :: t -> ImageData (Native t) b
-
--------------------------------------------------------------------------------
--- | An image primitive, the two ints are width followed by height.
---   Will typically be created by @loadImageEmb@ or @loadImageExt@ which,
---   will handle setting the width and height to the actual width and height
---   of the image.
-data DImage :: * -> * -> * -> * where
-  DImage :: ImageData t b -> Int -> Int -> Transformation V2 n -> DImage b n t
-  deriving Typeable
-
--- | Make a 'DImage' into a 'Diagram'.
-image :: (V b ~ V2, N b ~ n, TypeableFloat n, Typeable a, Typeable b, Renderable (DImage b n a) b)
-      => DImage b n a -> QDiagram b V2 n Any
-
-image (DImage (ImageDiagram img) _ _ _) = img
-image img
-  = mkQD (Prim img)
-         (getEnvelope r)
-         (getTrace r)
-         mempty
-         (Query $ \p -> Any (isInsideEvenOdd p r))
-  where
-    r = rect (fromIntegral w) (fromIntegral h)
-    DImage _ w h _ = img
--}
 --------------------------------------------------------------------------------------
 -- | Main library function
 -- 
@@ -174,7 +122,7 @@ image img
 --    mainWith $ diagramFromSVG
 -- @
 -- 
-readSVGFile :: (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Renderable (DImage b n Embedded) b, -- TODO upper example
+readSVGFile :: (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Renderable (DImage n Embedded) b, -- TODO upper example
                 Typeable b, Typeable n, Show n) => FilePath -> IO (Either String (Diagram b))
 readSVGFile fp = if (extension fp) /= (Just "svg") then return $ Left "Not a svg file" else
   runResourceT $ runEitherT $ do
@@ -194,10 +142,10 @@ diagram tr = (insertRefs ((nmap,cssmap,expandedGradMap),(0,0,100,100)) tr) # sca
 -- Basic SVG structure
 
 class (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n, Typeable b, Show n,
-       Renderable (DImage b n Embedded) b) => InputConstraints b n
+       Renderable (DImage n Embedded) b) => InputConstraints b n
 
 instance (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n, Typeable b, Show n,
-          Renderable (DImage b n Embedded) b) => InputConstraints b n
+          Renderable (DImage n Embedded) b) => InputConstraints b n
 
 -- | Parse \<svg\>, see <http://www.w3.org/TR/SVG/struct.html#SVGElement>
 parseSVG :: (MonadThrow m, InputConstraints b n) => Sink Event m (Maybe (Tag b n))
@@ -463,7 +411,7 @@ clipPathContent = choose [parseRect, parseCircle, parseEllipse, parseLine, parse
 --------------------------------------------------------------------------------------
 -- | Parse \<image\>, see <http://www.w3.org/TR/SVG/struct.html#ImageElement>
 -- <image width="28" xlink:href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAADCAYAAACAjW/aAAAABmJLR0QA/wD/AP+gvaeTAAAAB3RJTUUH2AkMDx4ErQ9V0AAAAClJREFUGJVjYMACGhoa/jMwMPyH0kQDYvQxYpNsaGjAyibCQrL00dSHACypIHXUNrh3AAAAAElFTkSuQmCC" height="3"/>
-parseImage :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Renderable (DImage b (N b) Embedded) b,
+parseImage :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Renderable (DImage (N b) Embedded) b,
               Typeable b, Typeable n) => Consumer Event m (Maybe (Tag b n))
 parseImage = tagName "{http://www.w3.org/2000/svg}image" imageAttrs $
   \(ca,cpa,gea,xlink,pa,class_,style,ext,ar,tr,x,y,w,h) ->
@@ -477,7 +425,7 @@ data ImageType = JPG | PNG | SVG
 --------------------------------------------------------------------------------
 -- | Convert base64 encoded data in <image> to a Diagram b with JuicyPixels
 --   input: "data:image/png;base64,..."
-dataUriToImage :: (Metric (V b), Ord n, RealFloat n, N b ~ n, V2 ~ V b, Renderable (DImage b n Embedded) b,
+dataUriToImage :: (Metric (V b), Ord n, RealFloat n, N b ~ n, V2 ~ V b, Renderable (DImage n Embedded) b,
                   Typeable b, Typeable n) => Maybe Text -> n -> n -> Diagram b
 dataUriToImage _           0 h = mempty
 dataUriToImage _           w 0 = mempty
