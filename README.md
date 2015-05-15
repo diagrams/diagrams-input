@@ -13,7 +13,7 @@ In the future it would be nice to have:
 
 # Usage
 
-See the [diagrams manual] (http://projects.haskell.org/diagrams/doc/manual.html#images)
+See the [diagrams manual] (http://projects.haskell.org/diagrams/doc/manual.html#images).
 
 # Development
 The SVG parser evolved like maybe most others also did: By taking some SVG images, focussing on one image, getting it displayed correctly. See if the changes affect other images positively. Figuring out what is the most important thing to fix next. The SVG 1.1 spec was used.
@@ -29,12 +29,8 @@ For testing purposes [diagrams-input-test] (https://github.com/diagrams/diagrams
 - [ ] inherit-attribute
 - [ ] display-attribute
 
-## Overview
-At first the svg parser was a separate library. In order to have only one function to load both raster and vector images and because of cyclic dependencies, loadImageEmb and loadImageExt from Image.hs had to be outsourced from diagrams-lib into diagrams-input.
-It is not sure if this is the best solution but the alternative I could come up would be to integrate the parser into diagrams-lib.
-
 ## A Walk through the Code
-1. [Image.hs](https://github.com/diagrams/diagrams-input/blob/afcb278dbbaee2d58deacb58d9294810bb7606c0/src/Diagrams/TwoD/Image.hs) contain the main functions [loadimageEmb](https://github.com/diagrams/diagrams-input/blob/afcb278dbbaee2d58deacb58d9294810bb7606c0/src/Diagrams/TwoD/Image.hs#L57-L58) and [loadImageExt](https://github.com/diagrams/diagrams-input/blob/afcb278dbbaee2d58deacb58d9294810bb7606c0/src/Diagrams/TwoD/Image.hs#L70-L71). They call [readimage](https://github.com/diagrams/diagrams-input/blob/afcb278dbbaee2d58deacb58d9294810bb7606c0/src/Diagrams/TwoD/Image.hs#L59) from [JuicyPixels](https://github.com/Twinside/Juicy.Pixels) and [readSVGFile](https://github.com/diagrams/diagrams-input/blob/afcb278dbbaee2d58deacb58d9294810bb7606c0/src/Diagrams/SVG/ReadSVG.hs#L184-L186) from [ReadSVG.hs](https://github.com/diagrams/diagrams-input/blob/afcb278dbbaee2d58deacb58d9294810bb7606c0/src/Diagrams/SVG/ReadSVG.hs).
+1. [Input.hs](https://github.com/diagrams/diagrams-input/blob/master/src/Diagrams/TwoD/Input.hs) contains the main functions [loadimageEmbedded](https://github.com/diagrams/diagrams-input/blob/21b58f8bfed86e0a96865848c680d465027a638e/src/Diagrams/TwoD/Input.hs#L34) and [loadImageExternal](https://github.com/diagrams/diagrams-input/blob/21b58f8bfed86e0a96865848c680d465027a638e/src/Diagrams/TwoD/Input.hs#L44). They call [readimage](https://github.com/diagrams/diagrams-input/blob/afcb278dbbaee2d58deacb58d9294810bb7606c0/src/Diagrams/TwoD/Image.hs#L59) from [JuicyPixels](https://github.com/Twinside/Juicy.Pixels) and [readSVGFile](https://github.com/diagrams/diagrams-input/blob/afcb278dbbaee2d58deacb58d9294810bb7606c0/src/Diagrams/SVG/ReadSVG.hs#L184-L186) from [ReadSVG.hs](https://github.com/diagrams/diagrams-input/blob/afcb278dbbaee2d58deacb58d9294810bb7606c0/src/Diagrams/SVG/ReadSVG.hs).
 2. In [ReadSVG.hs](https://github.com/diagrams/diagrams-input/blob/afcb278dbbaee2d58deacb58d9294810bb7606c0/src/Diagrams/SVG/ReadSVG.hs) the xml file is [parsed](https://github.com/diagrams/diagrams-input/blob/d8e2d9ee91b0e23fa1fea69d892101395cd5f8e7/src/Diagrams/SVG/ReadSVG.hs#L210) and translated into a [tree](https://github.com/diagrams/diagrams-input/blob/afcb278dbbaee2d58deacb58d9294810bb7606c0/src/Diagrams/SVG/Tree.hs#L52-L84). That was necessary because there need to be at least two passes because of references with the \<use\>-tag. The tree has Constructors that take functions that expect data (like css) that is only known after the first pass.
 3. All the [nodes](https://github.com/diagrams/diagrams-input/blob/afcb278dbbaee2d58deacb58d9294810bb7606c0/src/Diagrams/SVG/Tree.hs#L132-L157) of the tree are stored in a [key value storage](https://github.com/diagrams/diagrams-input/blob/afcb278dbbaee2d58deacb58d9294810bb7606c0/src/Diagrams/SVG/ReadSVG.hs#L195-L197). 
    Every node contains the whole subtree, but this is no problem because of lazy evaluation
