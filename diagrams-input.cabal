@@ -33,7 +33,7 @@ Library
                     , digits
                     , either
                     , JuicyPixels >= 3.1.5 && < 3.3
-                    , linear >= 1.11.3 && < 1.17
+                    , linear >= 1.11.3 && < 1.19
                     , resourcet
                     , semigroups
                     , split
