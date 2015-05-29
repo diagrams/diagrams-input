@@ -17,7 +17,7 @@ Library
                       Diagrams.SVG.Path
                       Diagrams.SVG.Tree
                       Diagrams.SVG.Arguments
-                      Diagrams.TwoD.Image
+                      Diagrams.TwoD.Input
                       Text.XML.Stream.Parse
                       Text.XML.Stream.Token
   Build-depends:      attoparsec >= 0.10
