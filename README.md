@@ -12,7 +12,7 @@ In the future it would be nice to have:
 - Obj (3d)
 
 # Usage
-The main functions are: [loadimageEmbedded](https://github.com/diagrams/diagrams-input/blob/21b58f8bfed86e0a96865848c680d465027a638e/src/Diagrams/TwoD/Input.hs#L34) and [loadImageExternal](https://github.com/diagrams/diagrams-input/blob/21b58f8bfed86e0a96865848c680d465027a638e/src/Diagrams/TwoD/Input.hs#L44) that return either a Left error-message or a Right diagram.
+The main functions are [loadimageEmbedded](https://github.com/diagrams/diagrams-input/blob/21b58f8bfed86e0a96865848c680d465027a638e/src/Diagrams/TwoD/Input.hs#L34) and [loadImageExternal](https://github.com/diagrams/diagrams-input/blob/21b58f8bfed86e0a96865848c680d465027a638e/src/Diagrams/TwoD/Input.hs#L44) that return either a Left error-message or a Right diagram.
 See the [diagrams manual] (http://projects.haskell.org/diagrams/doc/manual.html#images).
 
 # The SVG Parser
