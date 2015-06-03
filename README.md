@@ -24,14 +24,14 @@ Support of [SVG 1.1](http://www.w3.org/TR/SVG/):
 
 | Tags               |   Support                                          | Partial Support |  Missing      |
 | -------------------|:--------------------------------------------------:|:---------------:|:-------------:|
-| Document Structure:| <svg><g><defs><desc><title><symbol><use>           | <image>         | <switch>      |
+| Document Structure:| \<svg\>\<g\>\<defs\>\<desc\>\<title\>\<symbol\>\<use\>           | \<image\>         | \<switch\>      |
 | Style tag:         | Yes                                                | CSS             |               |
 | Path tag:          | All commands                                       |                 |               |
-| Basic Shapes:      | <rect><circle><ellipse><line><polyline><polygon>   |                 |               |
+| Basic Shapes:      | \<rect\>\<circle\>\<ellipse\>\<line\>\<polyline\>\<polygon\>   |                 |               |
 | Text tag:          | Pass the tag through to diagrams-svg or replace it with outlines from the font tag | | |
-| Filling, Stroking and Marker Symbols: |                                 |                 | <marker>      |
-| Gradients, Patterns: | Linear and Radial Gradients                      |                 | <pattern>     |
-| Clipping, Masking: | Clipping                                           |                 | <mask>        |
+| Filling, Stroking and Marker Symbols: |                                 |                 | \<marker\>      |
+| Gradients, Patterns: | Linear and Radial Gradients                      |                 | \<pattern\>     |
+| Clipping, Masking: | Clipping                                           |                 | \<mask\>        |
 | Filter effects     | No, not supported by diagrams                      |                 |               |
 | Linking            | No                                                 |                 |               |
 | Animation          | No, SVG Animation will likely be replaced by [Web Animations](http://www.w3.org/TR/web-animations/) | | |
