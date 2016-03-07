@@ -23,17 +23,21 @@ Library
   Build-depends:      attoparsec >= 0.10
                     , base == 4.*
                     , base64-bytestring
+                    , blaze-builder
+                    , blaze-markup
                     , bytestring
                     , colour
                     , conduit
+                    , conduit-extra
                     , containers
                     , css-text
+                    , data-default
                     , diagrams-core >= 1.3 && < 1.4
                     , diagrams-lib >= 1.3 && < 1.4
                     , digits
                     , either
                     , JuicyPixels >= 3.1.5 && < 3.3
-                    , linear >= 1.11.3 && < 1.19
+                    , linear >= 1.11.3
                     , resourcet
                     , semigroups
                     , split
@@ -41,10 +45,7 @@ Library
                     , text >= 0.11
                     , transformers
                     , unordered-containers
+                    , vector
                     , xml-types == 0.3.*
-                    , blaze-builder
-                    , blaze-markup
-                    , conduit-extra
-                    , data-default
   Hs-source-dirs:     src
   default-language:   Haskell2010
