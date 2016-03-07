@@ -17,7 +17,7 @@ Library
                       Diagrams.SVG.Path
                       Diagrams.SVG.Tree
                       Diagrams.SVG.Arguments
-                      Diagrams.TwoD.Image
+                      Diagrams.TwoD.Input
                       Text.XML.Stream.Parse
                       Text.XML.Stream.Token
   Build-depends:      attoparsec >= 0.10
@@ -33,7 +33,7 @@ Library
                     , digits
                     , either
                     , JuicyPixels >= 3.1.5 && < 3.3
-                    , linear >= 1.11.3 && < 1.17
+                    , linear >= 1.11.3 && < 1.19
                     , resourcet
                     , semigroups
                     , split
