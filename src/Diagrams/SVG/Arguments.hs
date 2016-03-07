@@ -39,6 +39,12 @@ module Diagrams.SVG.Arguments
     , tspanAttrs
     , namedViewAttrs
     , perspectiveAttrs
+    -- * Font Attributes
+    , fontAttrs
+    , fontFaceAttrs
+    , glyphAttrs
+    , missingGlyphAttrs
+    , kernAttrs
     -- * Filter Effect Attributes
     , feBlendAttrs
     , feColorMatrixAttrs
@@ -329,6 +335,63 @@ imageAttrs =
      ignoreAttrs
      return $ (\[class_,style,ext,ar,tr,x,y,w,h] -> 
                (ca,cpa,gea,xlink,pa,class_,style,ext,ar,tr,x,y,w,h) ) l
+
+-- | Attributes for \<font\>
+fontAttrs =
+  do ca <- coreAttributes
+     pa <- presentationAttributes
+     l <- mapM optionalAttr
+      ["class","style","externalResourcesRequired","horiz-origin-x","horiz-origin-y","horiz-adv-x",
+       "vert-origin-x","vert-origin-y","vert-adv-y"]
+     ignoreAttrs
+     return $ (\[class_,style,ext,horizOriginX,horizOriginY,horizAdvX,vertOriginX,vertOriginY,vertAdvY] -> 
+               (ca,pa,class_,style,ext,horizOriginX,horizOriginY,horizAdvX,vertOriginX,vertOriginY,vertAdvY) ) l
+
+-- | Attributes for \<font-face\>
+fontFaceAttrs =
+  do ca <- coreAttributes
+     l <- mapM optionalAttr
+      ["font-family","font-style","font-variant","font-weight","font-stretch","font-size","unicode-range","units-per-em","panose-1",
+       "stemv","stemh","slope","cap-height","x-height","accent-height", "ascent", "descent", "widths", "bbox", "ideographic",
+       "alphabetic","mathematical", "hanging", "v-ideographic", "v-alphabetic", "v-mathematical", "v-hanging", "underline-position",
+       "underline-thickness", "strikethrough-position", "strikethrough-thickness", "overline-position", "overline-thickness"]
+     ignoreAttrs
+     return $ (\[fontFamily,fontStyle,fontVariant,fontWeight,fontStretch,fontSize,unicodeRange,unitsPerEm,panose1,
+                 stemv,stemh,slope,capHeight,xHeight,accentHeight,ascent,descent,widths,bbox,ideographic,alphabetic,mathematical,
+                 hanging,vIdeographic,vAlphabetic,vMathematical,vHanging,underlinePosition,underlineThickness,strikethroughPosition,
+                 strikethroughThickness,overlinePosition,overlineThickness] -> 
+               (ca,fontFamily,fontStyle,fontVariant,fontWeight,fontStretch,fontSize,unicodeRange,unitsPerEm,panose1,
+                 stemv,stemh,slope,capHeight,xHeight,accentHeight,ascent,descent,widths,bbox,ideographic,alphabetic,mathematical,
+                 hanging,vIdeographic,vAlphabetic,vMathematical,vHanging,underlinePosition,underlineThickness,strikethroughPosition,
+                 strikethroughThickness,overlinePosition,overlineThickness) ) l
+
+missingGlyphAttrs =
+  do ca <- coreAttributes
+     pa <- presentationAttributes
+     l <- mapM optionalAttr
+      ["class","style","d","horiz-adv-x","vert-origin-x","vert-origin-y","vert-adv-y"]
+     ignoreAttrs
+     return $ (\[class_,style,d,horizAdvX,vertOriginX,vertOriginY,vertAdvY] -> 
+               (ca,pa,class_,style,d,horizAdvX,vertOriginX,vertOriginY,vertAdvY) ) l
+
+glyphAttrs =
+  do ca <- coreAttributes
+     pa <- presentationAttributes
+     l <- mapM optionalAttr
+      ["class","style","d","horiz-adv-x","vert-origin-x","vert-origin-y","vert-adv-y","unicode","glyph-name",
+       "orientation","arabic-form","lang"]
+     ignoreAttrs
+     return $ (\[class_,style,d,horizAdvX,vertOriginX,vertOriginY,vertAdvY,unicode,glyphName,orientation,arabicForm,lang] -> 
+               (ca,pa,class_,style,d,horizAdvX,vertOriginX,vertOriginY,vertAdvY,unicode,glyphName,orientation,arabicForm,lang) ) l
+
+kernAttrs =
+  do ca <- coreAttributes
+     l <- mapM optionalAttr
+      ["u1","g1","u2","g2","k"]
+     ignoreAttrs
+     return $ (\[u1,g1,u2,g2,k] -> 
+               (ca,u1,g1,u2,g2,k) ) l
+
 
 -- | Attributes for \<filter\>, see <http://www.w3.org/TR/SVG/filters.html#FilterElement>
 filterAttrs =

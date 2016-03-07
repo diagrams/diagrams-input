@@ -26,12 +26,13 @@ import           Diagrams.Core
 import           Diagrams.TwoD.Image
 import           Diagrams.TwoD.Size
 import           Diagrams.TwoD.Types
+import qualified Diagrams.TwoD.Text as TT
 import           Diagrams.SVG.ReadSVG (readSVGFile, InputConstraints)
 
 import           Filesystem.Path.CurrentOS (decodeString)
 
 -- | Load 2d formats given by a filepath and embed them
-loadImageEmbedded :: InputConstraints b n => FilePath -> IO (Either String (QDiagram b V2 n Any))
+loadImageEmbedded :: (InputConstraints b n, Renderable (TT.Text n) b, Read n) => FilePath -> IO (Either String (QDiagram b V2 n Any))
 loadImageEmbedded path = do
   dImg <- readImage path
   svgImg <- readSVGFile (decodeString path)

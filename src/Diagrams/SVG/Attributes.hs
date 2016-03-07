@@ -1,6 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE OverloadedStrings, NoMonomorphismRestriction, TypeFamilies, FlexibleContexts #-}
 
 --------------------------------------------------------------------
 -- |
@@ -370,7 +368,7 @@ instance Show (SVGStyle n a) where
   show (FillTex t) = "Filltex"
   show (FillRule r) = "FillRule"
   show (FillOpacity d) = "FillOpacity"
-  show (Opacity d) = "Opacity"
+  show (Diagrams.SVG.Attributes.Opacity d) = "Opacity"
   show (StrokeOpacity o) = "StrokeOpacity"
   show (Stroke s) = "Stroke"
   show (StrokeTex s) = "StrokeTex"
@@ -458,7 +456,7 @@ getStyles (FillRule Even_Odd) = fillRule EvenOdd
 getStyles (FillRule Nonzero) = id
 getStyles (FillRule Inherit) = id
 getStyles (FillOpacity x) = Diagrams.Prelude.opacity x
-getStyles (Opacity x) = Diagrams.Prelude.opacity x
+getStyles (Diagrams.SVG.Attributes.Opacity x) = Diagrams.Prelude.opacity x
 getStyles (StrokeOpacity x) | x == 0    = lwL 0
                             | otherwise = Diagrams.Prelude.opacity x -- we currently don't differentiate between fill opacity and stroke opacity
 getStyles (Stroke x) = lcA x
@@ -527,7 +525,7 @@ styleOpacity =
 
 styleOpacityVal =
   do o <- myDouble
-     return (Opacity $ fromRational $ toRational o)
+     return (Diagrams.SVG.Attributes.Opacity $ fromRational $ toRational o)
 
 
 -- | Example: style="stroke:black"

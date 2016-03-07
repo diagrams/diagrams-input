@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeFamilies, OverloadedStrings, FlexibleContexts #-}
 --------------------------------------------------------------------
 -- |
 -- Module    : Diagrams.SVG.Tree
@@ -32,14 +32,24 @@ module Diagrams.SVG.Tree
     , expandGradMap
     , insertRefs
     , preserveAspectRatio
+    , FontContent(..)
+    , FontData(..)
+    , FontFace(..)
+    , Glyph(..)
+    , KernDir(..)
+    , KernMaps(..)
+    , SvgGlyphs(..)
+    , Kern(..)
     )
 where
 import           Data.Maybe (isJust, fromJust , fromMaybe)
 import qualified Data.HashMap.Strict as H
 import qualified Data.Text as T
 import           Data.Text(Text(..))
+import           Data.Vector(Vector)
 import           Diagrams.Prelude
 import           Diagrams.TwoD.Size
+-- import           Diagrams.SVG.Fonts.ReadFont
 
 -- Note: Maybe we could use the Tree from diagrams here but on the other hand this makes diagrams-input 
 -- more independent of changes of diagrams' internal structures
@@ -80,6 +90,7 @@ data Tag b n = Leaf Id (ViewBox n -> Path V2 n) ((HashMaps b n, ViewBox n) -> Di
 --
 -- * A list of subtrees
      | StyleTag [(Text, [(Text, Text)])] -- ^ A tag that contains CSS styles with selectors and attributes
+     | FontTag (FontData b n)
      | Grad Id (Gr n) -- ^ A gradient
      | Stop (HashMaps b n -> [GradientStop n]) -- ^
 -- We need to make this part of this data structure because Gradient tags can also contain description tags
@@ -97,6 +108,7 @@ data Gr n = Gr GradRefId
                (CSSMap -> GradientAttributes -> ViewBox n -> [CSSMap -> [GradientStop n]] -> Texture n)
 
 type Gradlist n = [(Text, Gr n)]
+type Fontlist b n = [(Text, FontData b n)]
 
 type HashMaps b n = (NodesMap b n, CSSMap, GradientsMap n)
 type NodesMap b n = H.HashMap Text (Tag b n)
@@ -122,45 +134,51 @@ instance Show (Tag b n) where
 
 ----------------------------------------------------------------------------------
 -- | Generate elements that can be referenced by their ID.
---   The tree nodes are splitted into 3 groups of lists of (ID,value)-pairs):
+--   The tree nodes are splitted into 4 groups of lists of (ID,value)-pairs):
 --
 -- * Nodes that contain elements that can be transformed to a diagram
 --
 -- * CSS classes with corresponding (attribute,value)-pairs, from the <defs>-tag
 --
 -- * Gradients
-nodes :: Maybe (ViewBox n) -> (Nodelist b n, CSSlist, Gradlist n) -> Tag b n -> (Nodelist b n, CSSlist, Gradlist n)
-nodes viewbox (ns,css,grads) (Leaf id1 path diagram)
-  | isJust id1 = (ns ++ [(fromJust id1, Leaf id1 path diagram)],css,grads)
-  | otherwise  = (ns,css,grads)
+--
+-- * Fonts
+nodes :: Maybe (ViewBox n) -> (Nodelist b n, CSSlist, Gradlist n, Fontlist b n) -> Tag b n -> 
+                              (Nodelist b n, CSSlist, Gradlist n, Fontlist b n)
+nodes viewbox (ns,css,grads,fonts) (Leaf id1 path diagram)
+  | isJust id1 = (ns ++ [(fromJust id1, Leaf id1 path diagram)],css,grads,fonts)
+  | otherwise  = (ns,css,grads,fonts)
 
 -- A Reference element for the <use>-tag
-nodes viewbox (ns,css,grads) (Reference selfId id1 vb f) = (ns,css,grads)
+nodes viewbox (ns,css,grads,fonts) (Reference selfId id1 vb f) = (ns,css,grads,fonts)
 
-nodes viewbox (ns,css,grads)                      (SubTree b id1 Nothing ar f children)
-  | isJust id1 = myconcat [ (ns ++ [(fromJust id1, SubTree b id1 viewbox ar f children)],css,grads) ,
-                            (myconcat (map (nodes viewbox (ns,css,grads)) children))                ]
-  | otherwise  = myconcat (map (nodes viewbox (ns,css,grads)) children)
+nodes viewbox (ns,css,grads,fonts)                (SubTree b id1 Nothing ar f children)
+  | isJust id1 = myconcat [ (ns ++ [(fromJust id1, SubTree b id1 viewbox ar f children)],css,grads,fonts) ,
+                            (myconcat (map (nodes viewbox (ns,css,grads,fonts)) children))                ]
+  | otherwise  = myconcat (map (nodes viewbox (ns,css,grads,fonts)) children)
 
-nodes viewbox (ns,css,grads)                      (SubTree b id1 vb ar f children)
-  | isJust id1 = myconcat [ (ns ++ [(fromJust id1, SubTree b id1 vb ar f children)],css,grads) ,
-                            (myconcat (map (nodes vb (ns,css,grads)) children))                ]
-  | otherwise  = myconcat (map (nodes vb (ns,css,grads)) children)
+nodes viewbox (ns,css,grads,fonts)                (SubTree b id1 vb ar f children)
+  | isJust id1 = myconcat [ (ns ++ [(fromJust id1, SubTree b id1 vb ar f children)],css,grads,fonts) ,
+                            (myconcat (map (nodes vb (ns,css,grads,fonts)) children))                ]
+  | otherwise  = myconcat (map (nodes vb (ns,css,grads,fonts)) children)
 
-nodes viewbox (ns,css,grads) (Grad id1 (Gr gradRefId gattr vb stops texture))
-  | isJust id1 = (ns,css, grads ++ [(fromJust id1, Gr gradRefId gattr vb stops texture)] )
-  | otherwise  = (ns,css,grads)
+nodes viewbox (ns,css,grads,fonts) (Grad id1 (Gr gradRefId gattr vb stops texture))
+  | isJust id1 = (ns,css, grads ++ [(fromJust id1, Gr gradRefId gattr vb stops texture)], fonts)
+  | otherwise  = (ns,css,grads,fonts)
 
 -- There is a global style tag in the defs section of some svg files
-nodes viewbox (ns,css,grads) (StyleTag styles) = (ns,css ++ styles,grads)
+nodes viewbox (ns,css,grads,fonts) (StyleTag styles) = (ns,css ++ styles,grads,fonts)
 -- stops are not extracted here but from the gradient parent node
 nodes viewbox lists (Stop _) = lists
 
-myconcat :: [(Nodelist b n, CSSlist, Gradlist n)] -> (Nodelist b n, CSSlist, Gradlist n)
-myconcat list = (concat $ map sel1 list, concat $ map sel2 list, concat $ map sel3 list)
-  where sel1 (a,b,c) = a
-        sel2 (a,b,c) = b
-        sel3 (a,b,c) = c
+nodes viewbox (ns,css,grads,fonts) (FontTag fontData) = (ns,css,grads,fonts ++ [(fromMaybe "" (fontId fontData), fontData)])
+
+myconcat :: [(Nodelist b n, CSSlist, Gradlist n, Fontlist b n)] -> (Nodelist b n, CSSlist, Gradlist n, Fontlist b n)
+myconcat list = (concat $ map sel1 list, concat $ map sel2 list, concat $ map sel3 list, concat $ map sel4 list)
+  where sel1 (a,b,c,d) = a
+        sel2 (a,b,c,d) = b
+        sel3 (a,b,c,d) = c
+        sel4 (a,b,c,d) = d
 
 ------------------------------------------------------------------------------------------------------
 -- The following code is necessary to handle nested xlink:href in gradients, like in this example:
@@ -384,7 +402,7 @@ data PresentationAttributes =
       , floodColor :: Maybe Text
       , floodOpacity :: Maybe Text
       , fontFamily :: Maybe Text
-      , fontSize :: Maybe Text
+      , fntSize :: Maybe Text
       , fontSizeAdjust :: Maybe Text
       , fontStretch :: Maybe Text
       , fontStyle :: Maybe Text
@@ -422,4 +440,100 @@ data PresentationAttributes =
       , wordSpacing :: Maybe Text
       , writingMode :: Maybe Text
       } deriving Show
+
+type SvgGlyphs n = H.HashMap Text (Maybe Text, n, Maybe Text)
+-- ^ \[ (unicode, (glyph_name, horiz_advance, ds)) \]
+
+data Kern n = Kern
+  { kernDir :: KernDir
+  , kernU1  :: [Text]
+  , kernU2  :: [Text]
+  , kernG1  :: [Text]
+  , kernG2  :: [Text]
+  , kernK   :: n
+  }
+
+-- | Data from the subtags
+data FontContent b n = FF (FontFace n) | GG (Glyph b n) | KK (Kern n)
+
+-- | All data in the \<font\>-tag
+data FontData b n = FontData
+  {
+    fontId                         :: Maybe Text
+  , fontDataHorizontalOriginX      :: Maybe Text
+  , fontDataHorizontalOriginY      :: Maybe Text
+  , fontDataHorizontalAdvance      :: n
+  , fontDataVerticalOriginX        :: Maybe Text
+  , fontDataVerticalOriginY        :: Maybe Text
+  , fontDataVerticalAdvance        :: Maybe Text
+  -- ^ data gathered from subtags
+  , fontFace                       :: FontFace n
+  , fontMissingGlyph               :: Glyph b n
+  , fontDataGlyphs                 :: SvgGlyphs n
+--  , fontDataRawKernings            :: [(Text, [Text], [Text], [Text], [Text])]
+  , fontDataKerning                :: KernMaps n
+--  , fontDataFileName               :: Text
+}
+
+data FontFace n = FontFace
+  { fontDataFamily                 :: Maybe Text
+  , fontDataStyle                  :: Maybe Text
+  , fontDataVariant                :: Maybe Text
+  , fontDataWeight                 :: Maybe Text
+  , fontDataStretch                :: Maybe Text
+  , fontDataSize                   :: Maybe Text
+  , fontDataUnicodeRange           :: Maybe Text
+  , fontDataUnitsPerEm             :: Maybe Text
+  , fontDataPanose                 :: Maybe Text
+  , fontDataVerticalStem           :: Maybe Text
+  , fontDataHorizontalStem         :: Maybe Text
+  , fontDataSlope                  :: Maybe Text
+  , fontDataCapHeight              :: Maybe Text
+  , fontDataXHeight                :: Maybe Text
+  , fontDataAccentHeight           :: Maybe Text
+  , fontDataAscent                 :: Maybe Text
+  , fontDataDescent                :: Maybe Text
+  , fontDataWidths                 :: Maybe Text
+  , fontDataBoundingBox            :: [n]
+  , fontDataIdeographicBaseline    :: Maybe Text
+  , fontDataAlphabeticBaseline     :: Maybe Text
+  , fontDataMathematicalBaseline   :: Maybe Text
+  , fontDataHangingBaseline        :: Maybe Text
+  , fontDataVIdeographicBaseline   :: Maybe Text
+  , fontDataVAlphabeticBaseline    :: Maybe Text
+  , fontDataVMathematicalBaseline  :: Maybe Text
+  , fontDataVHangingBaseline       :: Maybe Text
+  , fontDataUnderlinePos           :: Maybe Text
+  , fontDataUnderlineThickness     :: Maybe Text
+  , fontDataStrikethroughPos       :: Maybe Text
+  , fontDataStrikethroughThickness :: Maybe Text
+  , fontDataOverlinePos            :: Maybe Text
+  , fontDataOverlineThickness      :: Maybe Text
+  }
+
+data Glyph b n = Glyph
+  { glyphId     :: Maybe Text
+  , glyph       :: Tag b n
+  , d           :: Maybe Text
+  , horizAdvX   :: n
+  , vertOriginX :: n
+  , vertOriginY :: n
+  , vertAdvY    :: n
+  , unicode     :: Maybe Text
+  , glyphName   :: Maybe Text
+  , orientation :: Maybe Text
+  , arabicForm  :: Maybe Text
+  , lang        :: Maybe Text
+  }
+
+data KernDir = HKern | VKern
+
+data KernMaps n = KernMaps
+  { kernDirs :: [KernDir]
+  , kernU1S :: H.HashMap Text [Int]
+  , kernU2S :: H.HashMap Text [Int]
+  , kernG1S :: H.HashMap Text [Int]
+  , kernG2S :: H.HashMap Text [Int]
+  , kernKs   :: Vector n
+  }
 

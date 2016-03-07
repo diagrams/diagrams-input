@@ -91,11 +91,13 @@ import           Data.XML.Types
 import           Diagrams.Attributes
 import           Diagrams.Prelude
 import           Diagrams.TwoD.Ellipse
-import           Diagrams.TwoD.Path   (isInsideEvenOdd)
+import           Diagrams.TwoD.Path (isInsideEvenOdd)
 import           Diagrams.TwoD.Size
 import           Diagrams.TwoD.Types
+import qualified Diagrams.TwoD.Text as TT
 import           Diagrams.SVG.Arguments
 import           Diagrams.SVG.Attributes
+import           Diagrams.SVG.Fonts.ReadFont
 import           Diagrams.SVG.Path (commands, commandsToPaths, PathCommand(..))
 import           Diagrams.SVG.Tree
 import           Filesystem.Path (FilePath, extension)
@@ -103,6 +105,7 @@ import           Prelude hiding (FilePath)
 import           Text.XML.Stream.Parse hiding (parseText)
 import           Text.CSS.Parse (parseBlocks)
 
+import           Debug.Trace
 --------------------------------------------------------------------------------------
 -- | Main library function
 -- 
@@ -121,23 +124,42 @@ import           Text.CSS.Parse (parseBlocks)
 --    diagramFromSVG <- readSVGFile \"svgs/web.svg\"
 --    mainWith $ diagramFromSVG
 -- @
--- 
+--
 readSVGFile :: (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Renderable (DImage n Embedded) b, -- TODO upper example
-                Typeable b, Typeable n, Show n) => FilePath -> IO (Either String (Diagram b))
-readSVGFile fp = if (extension fp) /= (Just "svg") then return $ Left "Not a svg file" else
+                Typeable b, Typeable n, Show n, Read n, Renderable (TT.Text n) b) => FilePath -> IO (Either String (Diagram b))
+readSVGFile fp = if (extension fp) /= (Just "svg") then return $ Left "Not a svg file" else -- TODO All exceptions into left values
   runResourceT $ runEitherT $ do
     tree <- lift (parseFile def fp $$ force "error in parseSVG" parseSVG)
     right (diagram tree)
 
-diagram :: (RealFloat n, V b ~ V2, n ~ N b, Typeable n) => Tag b n -> Diagram b
+diagram :: (RealFloat n, V b ~ V2, n ~ N b, Typeable n, Read n) => Tag b n -> Diagram b
 diagram tr = (insertRefs ((nmap,cssmap,expandedGradMap),(0,0,100,100)) tr) # scaleY (-1) # initialStyles
   where
-    (ns,css,grad) = nodes Nothing ([],[],[]) tr
+    (ns,css,grad,fonts) = nodes Nothing ([],[],[], []) tr
     nmap    = H.fromList ns -- needed because of the use-tag and clipPath
     cssmap  = H.fromList css -- CSS inside the <defs> tag
     gradmap = H.fromList grad
     expandedGradMap = expandGradMap gradmap
 
+
+-- | Read font data from font file, and compute its outline map.
+--
+{-
+loadFont :: (Read n, RealFloat n) => FilePath -> IO (Either String (PreparedFont n))
+loadFont filename = if (extension fp) /= (Just "svg") then return $ Left "Not a svg file" else -- TODO All exceptions into left values
+  runResourceT $ runEitherT $ do
+    tree <- lift (parseFile def fp $$ force "error in parseSVG" parseSVG)
+    let fontData = font tree
+    case fontData of Left s -> return (Left s)
+                     Right s -> do let (font, errs) = prepareFont fontData
+                                   sequence_ [ putStrLn ("error parsing character '" ++ ch ++ "': " ++ err)
+                                             | (ch, err) <- Map.toList errs
+                                             ]
+                                   return font
+
+font tr = fonts
+  where (ns,css,grad,fonts) = nodes Nothing ([],[],[], []) tr
+-}
 -------------------------------------------------------------------------------------
 -- Basic SVG structure
 
@@ -148,7 +170,8 @@ instance (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n, 
           Renderable (DImage n Embedded) b) => InputConstraints b n
 
 -- | Parse \<svg\>, see <http://www.w3.org/TR/SVG/struct.html#SVGElement>
-parseSVG :: (MonadThrow m, InputConstraints b n) => Sink Event m (Maybe (Tag b n))
+parseSVG :: (MonadThrow m, InputConstraints b n, Renderable (TT.Text n) b, Read n) 
+          => Sink Event m (Maybe (Tag b n))
 parseSVG = tagName "{http://www.w3.org/2000/svg}svg" svgAttrs $
    \(cpa,ca,gea,pa,class_,style,ext,x,y,w,h,vb,ar,zp,ver,baseprof,cScripT,cStyleT,xmlns,xml) ->
    do gs <- many gContent
@@ -163,17 +186,19 @@ parseSVG = tagName "{http://www.w3.org/2000/svg}svg" svgAttrs $
                             (applyStyleSVG st) -- (HashMaps b n -> [SVGStyle n a]) -> a -> a
                             (reverse gs)
 
-svgContent :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Tag b n))
+svgContent :: (MonadThrow m, InputConstraints b n, Renderable (TT.Text n) b, Read n) 
+            => Consumer Event m (Maybe (Tag b n))
 svgContent = choose -- the likely most common are checked first
      [parseG, parsePath, parseCircle, parseRect, parseEllipse, parseLine, parsePolyLine, parsePolygon,
       parseDefs, parseSymbol, parseUse, -- structural elements
-      parseClipPath, parsePattern, parseImage, -- parseText, parseSwitch, parseSodipodi,
+      parseClipPath, parsePattern, parseImage, parseText, -- parseSwitch, parseSodipodi,
       skipArbitraryTag] -- should always be last!
       -- parseDesc, parseMetaData, parseTitle] -- descriptive Elements
 
 ---------------------------------------------------------------------------
 -- | Parse \<g\>, see <http://www.w3.org/TR/SVG/struct.html#GElement>
-parseG :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Tag b n))
+parseG :: (MonadThrow m, InputConstraints b n, Renderable (TT.Text n) b, Read n) 
+        => Consumer Event m (Maybe (Tag b n))
 parseG = tagName "{http://www.w3.org/2000/svg}g" gAttrs
    $ \(cpa,ca,gea,pa,class_,style,ext,tr) ->
    do insideGs <- many gContent
@@ -186,18 +211,20 @@ parseG = tagName "{http://www.w3.org/2000/svg}g" gAttrs
                             (\maps -> (applyStyleSVG st maps) . (applyTr (parseTr tr)) )
                             (reverse insideGs)
 
-gContent :: (MonadThrow m, InputConstraints b n, Show n) => Consumer Event m (Maybe (Tag b n))
+gContent :: (MonadThrow m, InputConstraints b n, Show n, Read n, Renderable (TT.Text n) b) 
+          => Consumer Event m (Maybe (Tag b n))
 gContent = choose -- the likely most common are checked first
      [parsePath, parseG, parseRect, parseCircle, parseEllipse, parseLine, parsePolyLine, parsePolygon,
       parseUse, parseSymbol, parseStyle, parseDefs, -- structural elements
-      parseClipPath, parseLinearGradient, parseRadialGradient, parseImage, 
+      parseClipPath, parseLinearGradient, parseRadialGradient, parseImage, parseText, -- parseFont,
       skipArbitraryTag] -- -- should always be last!
---      parseText, parseFilter, parsePattern, parseSwitch, parsePerspective,
+--      parseFilter, parsePattern, parseSwitch, parsePerspective,
 --      parseDesc, parseMetaData, parseTitle, parsePathEffect] -- descriptive Elements
 
 ---------------------------------------------------------------------------
 -- | Parse \<defs\>, see <http://www.w3.org/TR/SVG/struct.html#DefsElement>
-parseDefs :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Tag b n))
+parseDefs :: (MonadThrow m, InputConstraints b n, Renderable (TT.Text n) b, Read n) 
+           => Consumer Event m (Maybe (Tag b n))
 parseDefs = tagName "{http://www.w3.org/2000/svg}defs" gAttrs $
    \(cpa,ca,gea,pa,class_,style,ext,tr) ->
    do insideDefs <- many gContent
@@ -231,7 +258,8 @@ parseStyle = tagName "{http://www.w3.org/2000/svg}style" sAttrs $
 
 -----------------------------------------------------------------------------------
 -- | Parse \<symbol\>, see <http://www.w3.org/TR/SVG/struct.html#SymbolElement>
-parseSymbol :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Tag b n))
+parseSymbol :: (MonadThrow m, InputConstraints b n, Renderable (TT.Text n) b, Read n) 
+             => Consumer Event m (Maybe (Tag b n))
 parseSymbol = tagName "{http://www.w3.org/2000/svg}symbol" symbolAttrs $
    \(ca,gea,pa,class_,style,ext,ar,viewbox) ->
    do insideSym <- many gContent
@@ -391,7 +419,8 @@ parsePath = tagName "{http://www.w3.org/2000/svg}path" pathAttrs $
 
 -------------------------------------------------------------------------------------------------
 -- | Parse \<clipPath\>, see <http://www.w3.org/TR/SVG/masking.html#ClipPathElement>
-parseClipPath :: (MonadThrow m, InputConstraints b n, Show n) => Consumer Event m (Maybe (Tag b n))
+parseClipPath :: (MonadThrow m, InputConstraints b n, Show n, Read n, Renderable (TT.Text n) b) 
+               => Consumer Event m (Maybe (Tag b n))
 parseClipPath = tagName "{http://www.w3.org/2000/svg}clipPath" clipPathAttrs $
   \(cpa,ca,pa,class_,style,ext,ar,viewbox) -> do
     insideClipPath <- many clipPathContent
@@ -404,7 +433,8 @@ parseClipPath = tagName "{http://www.w3.org/2000/svg}clipPath" clipPathAttrs $
                      (applyStyleSVG st)
                      (reverse insideClipPath)
 
-clipPathContent :: (MonadThrow m, InputConstraints b n, Show n) => Consumer Event m (Maybe (Tag b n))
+clipPathContent :: (MonadThrow m, InputConstraints b n, Show n, Read n, Renderable (TT.Text n) b) 
+                 => Consumer Event m (Maybe (Tag b n))
 clipPathContent = choose [parseRect, parseCircle, parseEllipse, parseLine, parsePolyLine, parsePath,
                           parsePolygon, parseText, parseUse]
 
@@ -422,7 +452,8 @@ parseImage = tagName "{http://www.w3.org/2000/svg}image" imageAttrs $
 -- TODO aspect ratio
 
 data ImageType = JPG | PNG | SVG
---------------------------------------------------------------------------------
+
+---------------------------------------------------------------------------------------------------
 -- | Convert base64 encoded data in <image> to a Diagram b with JuicyPixels
 --   input: "data:image/png;base64,..."
 dataUriToImage :: (Metric (V b), Ord n, RealFloat n, N b ~ n, V2 ~ V b, Renderable (DImage n Embedded) b,
@@ -456,12 +487,43 @@ im imageType base64data = case Base64.decode base64data of
 
 
 -- | Parse \<text\>, see <http://www.w3.org/TR/SVG/text.html#TextElement>
--- TODO: implement
-parseText :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => Consumer Event m (Maybe (Tag b n))
+parseText :: (MonadThrow m, InputConstraints b n, Read n, RealFloat n, Renderable (TT.Text n) b)
+            => Consumer Event m (Maybe (Tag b n))
 parseText = tagName "{http://www.w3.org/2000/svg}text" textAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,la,x,y,dx,dy,rot,textlen) ->
-  do t <- orE contentMaybe parseTSpan
-     return $ Leaf (id1 ca) mempty mempty
+  do t <- orE contentMaybe parseTSpans
+     let st :: (Read a, RealFloat a, RealFloat n) => HashMaps b n -> [(SVGStyle n a)]
+         st hmaps = (parseStyles style hmaps) ++
+                    (parsePA  pa  hmaps) ++
+                    (cssStylesFromMap hmaps "text" (id1 ca) class_)
+     let txtAnchor = maybe "start" T.unpack (textAnchor pa) -- see <https://www.w3.org/TR/SVG/text.html#TextAnchorProperty>
+     let anchorText :: (V b ~ V2, N b ~ n, RealFloat n, Read n, Typeable n, Renderable (TT.Text n) b)
+                     => String -> QDiagram b V2 n Any
+         anchorText txt = case txtAnchor of 
+                      "start"   -> baselineText txt
+                      "middle"  -> text txt
+                      "end"     -> alignedText 1 0 txt -- TODO is this correct?
+                      "inherit" -> text txt -- TODO
+
+     let f :: (V b ~ V2, N b ~ n, RealFloat n, Read n, Typeable n, Renderable (TT.Text n) b)
+           => (HashMaps b n, ViewBox n) -> Diagram b
+         f (maps,(minx,miny,w,h)) = anchorText (maybe "" T.unpack t)
+                                    # maybe id (fontSize . local . read . T.unpack) (fntSize pa)
+                                    # maybe id (font . T.unpack) (fontFamily pa)
+                                    -- fontWeight
+                                    # scaleY (-1)
+                                    # applyTr (parseTr tr)
+                                    # translate (r2 (p (minx,w) 0 x, p (miny,h) 0 y))
+                                    # applyStyleSVG st maps
+     return $ Leaf (id1 ca) mempty f
+{-
+-- text related data of pa (presentation attribute)
+
+alignmentBaseline baselineShift dominantBaseline fontFamily
+fntSize fontSizeAdjust fontStretch fontStyle fontVariant fontWeight
+glyphOrientationHorizontal glyphOrientationVertical kerning letterSpacing
+textAnchor textDecoration textRendering wordSpacing writingMode
+-}
 
 {-<tspan
          sodipodi:role="line"
@@ -469,15 +531,17 @@ parseText = tagName "{http://www.w3.org/2000/svg}text" textAttrs $
          x="1551.4218"
          y="1056.9836" /> -}
 
+parseTSpans = do first <- parseTSpan
+                 t <- many parseTSpan
+                 return (Just "")
+
 parseTSpan = tagName "{http://www.w3.org/2000/svg}tspan" ignoreAttrs $
    \_ -> do c <- content  -- \(role,id_,x,y) ->
-            return ""
+            return (Just "")
 
 --------------------------------------------------------------------------------------
 -- Gradients
-
--- > gradient = mkLinearGradient stops ((-0.5) ^& 0) (0.5 ^& 0) GradPad
--- > sq1 = square 1 # fillTexture  gradient
+-------------------------------------------------------------------------------------
 
 -- | Parse \<linearGradient\>, see <http://www.w3.org/TR/SVG/pservers.html#LinearGradientElement>
 -- example: <linearGradient id="SVGID_2_" gradientUnits="userSpaceOnUse" x1="68.2461" y1="197.6797"
@@ -572,10 +636,87 @@ isFill _        = False
 isOpacity (FillOpacity _) = True
 isOpacity _           = False
 
--- | A gradient stop contains a color and fraction (usually between 0 and 1)
---data GradientStop d = GradientStop
---     { _stopColor    :: SomeColor
---     , _stopFraction :: d}
+----------------------------------------------------------------------------------------------------
+-- Fonts
+----------------------------------------------------------------------------------------------------
+
+parseFont :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Renderable (DImage (N b) Embedded) b, Renderable (Path V2 n) b,
+              Typeable b, Typeable n, Show n, Read n, Renderable (TT.Text n) b) => Consumer Event m (Maybe (Tag b n))
+parseFont = tagName "{http://www.w3.org/2000/svg}font" fontAttrs $
+  \(ca,pa,class_,style,ext,hOriginX,hOriginY,hAdvX,vOriginX,vOriginY,vAdvY) ->
+  do gs <- many fontContent
+     return $ FontTag $ FontData (id1 ca) hOriginX hOriginY (getN hAdvX) vOriginX vOriginY vAdvY 
+                                 (fontf gs) (missingGlyph gs) (glyphs gs) (kernMap (kerns gs))
+  where fontf gs        = (\(FF f) -> f) $ head $ Prelude.filter isFontFace gs
+        missingGlyph gs = (\(GG g) -> g) $ head $ Prelude.filter isMissingGlyph gs
+        glyphs gs       = H.fromList $ map toSvgGlyph     (Prelude.filter isGlyph gs)
+        kerns gs = map (\(KK k) -> k) (Prelude.filter isKern gs)
+
+        isGlyph (GG (Glyph glyphId g d _ _ _ _ unicode glyphName o a l)) = not (maybe False T.null unicode) ||
+                                                                           not (maybe False T.null glyphName)
+        isGlyph _        = False
+        isMissingGlyph (GG (Glyph glyphId g d _ _ _ _ unicode glyphName o a l)) = (maybe False T.null unicode) &&
+                                                                                  (maybe False T.null glyphName)
+        isMissingGlyph _  = False
+        isKern (KK k)     = True
+        isKern _          = False
+        isFontFace (FF f) = True
+        isFontFace _      = False
+        toSvgGlyph (GG (Glyph glyphId g d horizAdvX _ _ _ (Just unicode) glyphName o a l)) = (unicode,(glyphName,horizAdvX,d))
+
+fontContent :: (MonadThrow m, InputConstraints b n, Read n, Show n, Renderable (TT.Text n) b) 
+             => Consumer Event m (Maybe (FontContent b n))
+fontContent = choose -- the likely most common are checked first
+     [parseGlyph, parseHKern, parseFontFace, parseMissingGlyph, parseVKern]
+
+
+parseFontFace :: (MonadThrow m, V b ~ V2, N b ~ n, Read n, RealFloat n, Renderable (DImage (N b) Embedded) b,
+              Typeable b, Typeable n) => Consumer Event m (Maybe (FontContent b n))
+parseFontFace = tagName "{http://www.w3.org/2000/svg}font-face" fontFaceAttrs $
+  \(ca,fontFamily,fontStyle,fontVariant,fontWeight,fontStretch,fontSize,unicodeRange,unitsPerEm,panose1,
+    stemv,stemh,slope,capHeight,xHeight,accentHeight,ascent,descent,widths,bbox,ideographic,alphabetic,mathematical,
+    hanging,vIdeographic,vAlphabetic,vMathematical,vHanging,underlinePosition,underlineThickness,strikethroughPosition,
+    strikethroughThickness,overlinePosition,overlineThickness) ->
+  do return $ FF $ FontFace fontFamily fontStyle fontVariant fontWeight fontStretch fontSize unicodeRange unitsPerEm panose1
+                            stemv stemh slope capHeight xHeight accentHeight ascent descent widths (parseBBox bbox) ideographic
+                            alphabetic mathematical hanging vIdeographic vAlphabetic  vMathematical vHanging underlinePosition 
+                            underlineThickness strikethroughPosition strikethroughThickness overlinePosition overlineThickness
+
+
+parseMissingGlyph :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Read n, Renderable (DImage (N b) Embedded) b,
+              Typeable b, Typeable n) => Consumer Event m (Maybe (FontContent b n))
+parseMissingGlyph = tagName "{http://www.w3.org/2000/svg}missing-glyph" missingGlyphAttrs $
+  \(ca,pa,class_,style,d,horizAdvX,vertOriginX,vertOriginY,vertAdvY) ->
+  do return $ GG $ Glyph (id1 ca) (Leaf (id1 ca) mempty mempty) Nothing
+                         (getN horizAdvX) (getN vertOriginX) (getN vertOriginY) (getN vertAdvY)
+                         Nothing Nothing Nothing Nothing Nothing
+
+
+parseGlyph :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Read n, Renderable (DImage (N b) Embedded) b,
+              Renderable (Path V2 n) b, Show n, Typeable b, Typeable n, Renderable (TT.Text n) b) 
+           => Consumer Event m (Maybe (FontContent b n))
+parseGlyph = tagName "{http://www.w3.org/2000/svg}glyph" glyphAttrs $
+  \(ca,pa,class_,style,d,horizAdvX,vertOriginX,vertOriginY,vertAdvY,unicode,glyphName,orientation,arabicForm,lang) ->
+  do gs <- many gContent
+     let st hmaps = parseStyles style hmaps
+     let sub = SubTree True (id1 ca) Nothing Nothing (\maps -> (applyStyleSVG st maps)) (reverse gs)
+     return $ GG $ Glyph (id1 ca) sub d (getN horizAdvX) (getN vertOriginX) (getN vertOriginY) (getN vertAdvY)
+                         unicode glyphName orientation arabicForm lang
+
+getN = maybe 0 (read . T.unpack)
+
+parseHKern :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Read n, Typeable b, Typeable n) => Consumer Event m (Maybe (FontContent b n))
+parseHKern = tagName "{http://www.w3.org/2000/svg}hkern" kernAttrs $
+  \(ca,u1,g1,u2,g2,k) ->
+  do return $ KK $ Kern HKern (charList u1) (charList g1) (charList u2) (charList g2) (getN k)
+
+parseVKern :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Read n, Typeable b, Typeable n) => Consumer Event m (Maybe (FontContent b n))
+parseVKern = tagName "{http://www.w3.org/2000/svg}vkern" kernAttrs $
+  \(ca,u1,g1,u2,g2,k) ->
+  do return $ KK $ Kern VKern (charList u1) (charList g1) (charList u2) (charList g2) (getN k)
+
+charList :: Maybe Text -> [Text]
+charList str = maybe [] (T.splitOn ",") str
 
 ----------------------------------------------------------------------------------------
 -- descriptive elements

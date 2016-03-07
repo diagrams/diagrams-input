@@ -39,22 +39,22 @@ import Diagrams.Prelude
 
 data AbsRel = Abs | Rel deriving Show
 data PathCommand n =
-  M AbsRel (n,n) | -- ^AbsRel (x,y): Establish a new current point (with absolute coords)
+  M AbsRel !(n,n) | -- ^AbsRel (x,y): Establish a new current point (with absolute coords)
   Z | -- ^Close current subpath by drawing a straight line from current point to current subpath's initial point
-  L AbsRel (n,n) | -- ^AbsRel (X,Y): A line from the current point to Tup which becomes the new current point
-  H AbsRel n | -- ^AbsRel x: A horizontal line from the current point (cpx, cpy) to (x, cpy)
-  V AbsRel n | -- ^AbsRel y: A vertical line from the current point (cpx, cpy) to (cpx, y)
-  C AbsRel (n,n,n,n,n,n) | -- ^AbsRel (X1,Y1,X2,Y2,X,Y): Draws a cubic Bézier curve from the current point to (x,y) using (x1,y1) as the
+  L AbsRel !(n,n) | -- ^AbsRel (X,Y): A line from the current point to Tup which becomes the new current point
+  H AbsRel !n | -- ^AbsRel x: A horizontal line from the current point (cpx, cpy) to (x, cpy)
+  V AbsRel !n | -- ^AbsRel y: A vertical line from the current point (cpx, cpy) to (cpx, y)
+  C AbsRel !(n,n,n,n,n,n) | -- ^AbsRel (X1,Y1,X2,Y2,X,Y): Draws a cubic Bézier curve from the current point to (x,y) using (x1,y1) as the
   -- ^control point at the beginning of the curve and (x2,y2) as the control point at the end of the curve.
-  S AbsRel (n,n,n,n) | -- ^AbsRel (X2,Y2,X,Y): Draws a cubic Bézier curve from the current point to (x,y). The first control point is
+  S AbsRel !(n,n,n,n) | -- ^AbsRel (X2,Y2,X,Y): Draws a cubic Bézier curve from the current point to (x,y). The first control point is
 -- assumed to be the reflection of the second control point on the previous command relative to the current point.
 -- (If there is no previous command or if the previous command was not an C, c, S or s, assume the first control
 -- point is coincident with the current point.) (x2,y2) is the second control point (i.e., the control point at
 -- the end of the curve).
-  Q AbsRel (n,n,n,n) | -- ^AbsRel (X1,Y1,X,Y): A quadr. Bézier curve from the curr. point to (x,y) using (x1,y1) as the control point.
+  Q AbsRel !(n,n,n,n) | -- ^AbsRel (X1,Y1,X,Y): A quadr. Bézier curve from the curr. point to (x,y) using (x1,y1) as the control point.
 -- Nearly the same as cubic, but with one point less
-  T AbsRel (n,n) | -- ^AbsRel (X,Y): T_Abs = Shorthand/smooth quadratic Bezier curveto
-  A AbsRel (n,n,n,n,n,n,n) -- ^AbsRel (rx,ry,xAxisRot,fl0,fl1,x,y): Elliptic arc
+  T AbsRel !(n,n) | -- ^AbsRel (X,Y): T_Abs = Shorthand/smooth quadratic Bezier curveto
+  A AbsRel !(n,n,n,n,n,n,n) -- ^AbsRel (rx,ry,xAxisRot,fl0,fl1,x,y): Elliptic arc
    deriving Show
 
 
