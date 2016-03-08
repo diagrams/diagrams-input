@@ -40,7 +40,6 @@ Support of [SVG 1.1](http://www.w3.org/TR/SVG/):
 | Inkscape tags      | No                                                 |                 |               |
 
 ### TODO
-- [x] Implement \<text\>-tag in the svg parser: Passing through without generating the outlines
 - [ ] fill = "none" => path open
 - [ ] Scale viewbox to width and height
 - [ ] Bug in arc command
