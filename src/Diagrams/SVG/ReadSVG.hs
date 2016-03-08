@@ -485,37 +485,29 @@ im imageType base64data = case Base64.decode base64data of
          --  SVG -> preserveAspectRatio w h oldWidth oldHeight ar (readSVGBytes base64data) -- something like that
          _ -> Left "diagrams-input: format not supported in <image>-tag"
 
-
+-------------------------------------------------------------------------------------------------
 -- | Parse \<text\>, see <http://www.w3.org/TR/SVG/text.html#TextElement>
 parseText :: (MonadThrow m, InputConstraints b n, Read n, RealFloat n, Renderable (TT.Text n) b)
             => Consumer Event m (Maybe (Tag b n))
 parseText = tagName "{http://www.w3.org/2000/svg}text" textAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,la,x,y,dx,dy,rot,textlen) ->
-  do t <- orE contentMaybe parseTSpans
-     let st :: (Read a, RealFloat a, RealFloat n) => HashMaps b n -> [(SVGStyle n a)]
-         st hmaps = (parseStyles style hmaps) ++
-                    (parsePA  pa  hmaps) ++
-                    (cssStylesFromMap hmaps "text" (id1 ca) class_)
-     let txtAnchor = maybe "start" T.unpack (textAnchor pa) -- see <https://www.w3.org/TR/SVG/text.html#TextAnchorProperty>
-     let anchorText :: (V b ~ V2, N b ~ n, RealFloat n, Read n, Typeable n, Renderable (TT.Text n) b)
-                     => String -> QDiagram b V2 n Any
-         anchorText txt = case txtAnchor of 
-                      "start"   -> baselineText txt
-                      "middle"  -> text txt
-                      "end"     -> alignedText 1 0 txt -- TODO is this correct?
-                      "inherit" -> text txt -- TODO
+    do insideText <- many (tContent (cpa,ca,gea,pa,class_,style,ext,la,x,y,dx,dy,rot,textlen))
+       let st hmaps = (parseStyles style hmaps) ++
+                      (parsePA  pa  hmaps) ++
+                      (cssStylesFromMap hmaps "g" (id1 ca) class_)
+       return $ SubTree True (id1 ca)
+                             Nothing
+                             Nothing
+                             (\maps -> (applyStyleSVG st maps) . (applyTr (parseTr tr)) )
+                             insideText
 
-     let f :: (V b ~ V2, N b ~ n, RealFloat n, Read n, Typeable n, Renderable (TT.Text n) b)
-           => (HashMaps b n, ViewBox n) -> Diagram b
-         f (maps,(minx,miny,w,h)) = anchorText (maybe "" T.unpack t)
-                                    # maybe id (fontSize . local . read . T.unpack) (fntSize pa)
-                                    # maybe id (font . T.unpack) (fontFamily pa)
-                                    -- fontWeight
-                                    # scaleY (-1)
-                                    # applyTr (parseTr tr)
-                                    # translate (r2 (p (minx,w) 0 x, p (miny,h) 0 y))
-                                    # applyStyleSVG st maps
-     return $ Leaf (id1 ca) mempty f
+tContent (cpa,ca,gea,pa,class_,style,ext,la,x,y,dx,dy,rot,textlen)
+         = choose
+           [ parseTSpan  (cpa,ca,gea,pa,class_,style,ext,la,x,y,dx,dy,rot,textlen),
+             textContent (cpa,ca,gea,pa,class_,style,ext,la,x,y,dx,dy,rot,textlen) ]
+
+
+
 {-
 -- text related data of pa (presentation attribute)
 
@@ -525,19 +517,105 @@ glyphOrientationHorizontal glyphOrientationVertical kerning letterSpacing
 textAnchor textDecoration textRendering wordSpacing writingMode
 -}
 
+-- | Parse a string between the text tags:  \<text\>Hello\</text\>
+textContent :: (MonadThrow m, InputConstraints b n, RealFloat n, Read n, Renderable (TT.Text n) b) =>
+               (ConditionalProcessingAttributes,
+                CoreAttributes,
+                GraphicalEventAttributes,
+                PresentationAttributes,
+                Maybe Text,
+                Maybe Text,
+                Maybe Text,
+                Maybe Text,
+                Maybe Text,
+                Maybe Text,
+                Maybe Text,
+                Maybe Text,
+                Maybe Text,
+                Maybe Text) -> ConduitM Event o m (Maybe (Tag b n))
+textContent (cpa,ca,gea,pa,class_,style,ext,la,x,y,dx,dy,rot,textlen) =
+  do t <- contentMaybe
+     let st :: (Read a, RealFloat a, RealFloat n) => HashMaps b n -> [(SVGStyle n a)]
+         st hmaps = (parseStyles style hmaps) ++
+                    (parsePA  pa  hmaps) ++
+                    (cssStylesFromMap hmaps "text" (id1 ca) class_)
+
+     let f :: (V b ~ V2, N b ~ n, RealFloat n, Read n, Typeable n, Renderable (TT.Text n) b)
+           => (HashMaps b n, ViewBox n) -> Diagram b
+         f (maps,(minx,miny,w,h)) = anchorText pa (maybe "" T.unpack t)
+                                    # maybe id (fontSize . local . read . T.unpack) (fntSize pa)
+                                    # maybe id (font . T.unpack) (fontFamily pa)
+                                    -- fontWeight
+                                    # scaleY (-1)
+                                    # translate (r2 (p (minx,w) 0 x, p (miny,h) 0 y))
+                                    # applyStyleSVG st maps
+
+     return (if isJust t then Just $ Leaf (id1 ca) mempty f
+                         else Nothing)
+
+
 {-<tspan
          sodipodi:role="line"
          id="tspan2173"
          x="1551.4218"
          y="1056.9836" /> -}
 
-parseTSpans = do first <- parseTSpan
-                 t <- many parseTSpan
-                 return (Just "")
+-------------------------------------------------------------------------------------------------
+-- | Parse \<tspan\>, see <https://www.w3.org/TR/SVG/text.html#TSpanElement>
+parseTSpan :: (MonadThrow m, InputConstraints b n, RealFloat n, Read n, Renderable (TT.Text n) b) =>
+              (ConditionalProcessingAttributes,
+               CoreAttributes,
+               GraphicalEventAttributes,
+               PresentationAttributes,
+               Maybe Text,
+               Maybe Text,
+               Maybe Text,
+               Maybe Text,
+               Maybe Text,
+               Maybe Text,
+               Maybe Text,
+               Maybe Text,
+               Maybe Text,
+               Maybe Text) -> ConduitM Event o m (Maybe (Tag b n))
+parseTSpan (cpa,ca,gea,pa,class_,style,ext,la,x,y,dx,dy,rot,textlen) = tagName "{http://www.w3.org/2000/svg}tspan" tspanAttrs $
+  \(cpa1,ca1,gea1,pa1,class1,style1,ext1,x1,y1,dx1,dy1,rot1,textlen1,lAdjust1,role) ->
+    do t <- contentMaybe
+       let st :: (Read a, RealFloat a, RealFloat n) => HashMaps b n -> [(SVGStyle n a)]
+           st hmaps = (parseStyles style hmaps) ++
+                      (parseStyles style1 hmaps) ++
+                      (parsePA  pa  hmaps) ++
+                      (parsePA  pa1  hmaps) ++
+                      (cssStylesFromMap hmaps "text" (id1 ca) class_)
 
-parseTSpan = tagName "{http://www.w3.org/2000/svg}tspan" ignoreAttrs $
-   \_ -> do c <- content  -- \(role,id_,x,y) ->
-            return (Just "")
+       let f :: (V b ~ V2, N b ~ n, RealFloat n, Read n, Typeable n, Renderable (TT.Text n) b)
+             => (HashMaps b n, ViewBox n) -> Diagram b
+           f (maps,(minx,miny,w,h)) = anchorText pa (maybe "" T.unpack t)
+                                      # maybe id (fontSize . local . read . T.unpack) (pref (fntSize pa1) (fntSize pa))
+                                      # maybe id (font . T.unpack) (pref (fontFamily pa1) (fontFamily pa))
+                                      -- fontWeight
+                                      # scaleY (-1)
+                                      # translate (r2 (p (minx,w) 0 x, p (miny,h) 0 y))
+                                      # translate (r2 (p (minx,w) 0 x1, p (miny,h) 0 y1))
+                                      # applyStyleSVG st maps
+       return $ Leaf (id1 ca) mempty f
+
+
+anchorText :: (V b ~ V2, N b ~ n, RealFloat n, Read n, Typeable n, Renderable (TT.Text n) b)
+           => PresentationAttributes -> String -> QDiagram b V2 n Any
+anchorText pa txt = case anchor pa of 
+    "start"   -> baselineText txt
+    "middle"  -> text txt
+    "end"     -> alignedText 1 0 txt -- TODO is this correct?
+    "inherit" -> text txt -- TODO
+  where
+    anchor pa = maybe "start" T.unpack (textAnchor pa) -- see <https://www.w3.org/TR/SVG/text.html#TextAnchorProperty>
+
+
+pref :: Maybe a -> Maybe a -> Maybe a
+pref (Just x) b       = Just x
+pref Nothing (Just y) = Just y
+pref Nothing Nothing  = Nothing
+
 
 --------------------------------------------------------------------------------------
 -- Gradients

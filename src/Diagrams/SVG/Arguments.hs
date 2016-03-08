@@ -455,10 +455,16 @@ textAttrs =
                (cpa,ca,gea,pa,class_,style,ext,tr,la,x,y,dx,dy,rot,textlen) ) l
 
 tspanAttrs =
-  do p <- mapM optionalAttr
-      [ "{http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd}role", "id", "x", "y" ]
+  do cpa <- conditionalProcessingAttributes
+     ca <- coreAttributes
+     gea <- graphicalEventAttributes
+     pa <- presentationAttributes
+     p <- mapM optionalAttr
+      [ "class","style","externalResourcesRequired", "x", "y", "dx", "dy", "rotate", "textLength", "lengthAdjust", 
+        "{http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd}role" ]
      ignoreAttrs
-     return $ ( \[role,id_,x,y] -> (role,id_,x,y) ) p
+     return $ ( \[class_, style, ext, x, y, dx, dy, rotate, textlen, lAdjust, role] -> 
+                 (cpa,ca,gea,pa,class_,style,ext,x,y,dx,dy,rotate,textlen,lAdjust,role) ) p
 
 namedViewAttrs =
   do l <- mapM optionalAttr
