@@ -77,7 +77,10 @@ data Tag b n = Leaf Id (ViewBox n -> Path V2 n) ((HashMaps b n, ViewBox n) -> Di
 -- * A viewbox so that percentages are relative to this viewbox
 --
 -- * Transformations applied to the reference
-     | SubTree Bool Id (Maybe (ViewBox n)) (Maybe PreserveAR) (HashMaps b n -> Diagram b -> Diagram b) [Tag b n]-- ^
+     | SubTree Bool Id (Maybe (ViewBox n)) 
+                       (Maybe PreserveAR) 
+                       (HashMaps b n -> Diagram b -> Diagram b) 
+                       [Tag b n]-- ^
 -- A subtree consists of:
 --
 -- * A Bool: Are we in a section that will be rendered directly (not in a \<defs\>-section)
@@ -85,6 +88,8 @@ data Tag b n = Leaf Id (ViewBox n -> Path V2 n) ((HashMaps b n, ViewBox n) -> Di
 -- * An Id of subdiagram
 --
 -- * A viewbox so that percentages are relative to this viewbox
+--
+-- * Aspect Ratio
 --
 -- * A transformation or application of a style to a subdiagram
 --

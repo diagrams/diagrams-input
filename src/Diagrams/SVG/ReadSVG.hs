@@ -175,15 +175,14 @@ parseSVG :: (MonadThrow m, InputConstraints b n, Renderable (TT.Text n) b, Read 
 parseSVG = tagName "{http://www.w3.org/2000/svg}svg" svgAttrs $
    \(cpa,ca,gea,pa,class_,style,ext,x,y,w,h,vb,ar,zp,ver,baseprof,cScripT,cStyleT,xmlns,xml) ->
    do gs <- many gContent
-      let -- st :: (RealFloat n, RealFloat a, Read a) => HashMaps b n -> [SVGStyle n a]
-          st hmaps = (parseStyles style hmaps) ++ -- parse the style attribute (style="stop-color:#000000;stop-opacity:0.8")
+      let st hmaps = (parseStyles style hmaps) ++ -- parse the style attribute (style="stop-color:#000000;stop-opacity:0.8")
                      (parsePA  pa  hmaps) ++ -- presentation attributes: stop-color="#000000" stop-opacity="0.8"
                      (cssStylesFromMap hmaps "svg" (id1 ca) class_)
       return $ -- Debug.Trace.trace ("@" ++ show vb ++ show (parseViewBox vb w h)) (
                SubTree True (id1 ca)
                             (parseViewBox vb w h)
                             (parsePreserveAR ar)
-                            (applyStyleSVG st) -- (HashMaps b n -> [SVGStyle n a]) -> a -> a
+                            (applyStyleSVG st)
                             (reverse gs)
 
 svgContent :: (MonadThrow m, InputConstraints b n, Renderable (TT.Text n) b, Read n) 
@@ -329,7 +328,7 @@ parseRect = tagName "{http://www.w3.org/2000/svg}rect" rectAttrs $
 parseCircle :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Tag b n))
 parseCircle = tagName "{http://www.w3.org/2000/svg}circle" circleAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,r,cx,cy) -> do
-    let st :: (RealFloat n, RealFloat a, Read a) => HashMaps b n -> [SVGStyle n a]
+    let -- st :: (RealFloat n, RealFloat a, Read a) => (HashMaps b n, ViewBox n) -> [SVGStyle n a]
         st hmaps = (parseStyles style hmaps) ++
                    (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "circle" (id1 ca) class_)
@@ -491,21 +490,20 @@ parseText :: (MonadThrow m, InputConstraints b n, Read n, RealFloat n, Renderabl
             => Consumer Event m (Maybe (Tag b n))
 parseText = tagName "{http://www.w3.org/2000/svg}text" textAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,la,x,y,dx,dy,rot,textlen) ->
-    do insideText <- many (tContent (cpa,ca,gea,pa,class_,style,ext,la,x,y,dx,dy,rot,textlen))
-       let st hmaps = (parseStyles style hmaps) ++
+    do let st hmaps = (parseStyles style hmaps) ++
                       (parsePA  pa  hmaps) ++
-                      (cssStylesFromMap hmaps "g" (id1 ca) class_)
+                      (cssStylesFromMap hmaps "text" (id1 ca) class_)
+       insideText <- many (tContent (cpa,ca,gea,pa,class_,style,ext,tr,la,x,y,dx,dy,rot,textlen))
        return $ SubTree True (id1 ca)
                              Nothing
                              Nothing
-                             (\maps -> (applyStyleSVG st maps) . (applyTr (parseTr tr)) )
+                             (\maps -> (applyStyleSVG st maps) . (fontSize medium))
                              insideText
 
-tContent (cpa,ca,gea,pa,class_,style,ext,la,x,y,dx,dy,rot,textlen)
+tContent (cpa,ca,gea,pa,class_,style,ext,tr,la,x,y,dx,dy,rot,textlen)
          = choose
-           [ parseTSpan  (cpa,ca,gea,pa,class_,style,ext,la,x,y,dx,dy,rot,textlen),
-             textContent (cpa,ca,gea,pa,class_,style,ext,la,x,y,dx,dy,rot,textlen) ]
-
+           [ parseTSpan  (cpa,ca,gea,pa,class_,style,ext,tr,la,x,y,dx,dy,rot,textlen),
+             textContent (cpa,ca,gea,pa,class_,style,ext,tr,la,x,y,dx,dy,rot,textlen) ]
 
 
 {-
@@ -532,23 +530,26 @@ textContent :: (MonadThrow m, InputConstraints b n, RealFloat n, Read n, Rendera
                 Maybe Text,
                 Maybe Text,
                 Maybe Text,
+                Maybe Text,
                 Maybe Text) -> ConduitM Event o m (Maybe (Tag b n))
-textContent (cpa,ca,gea,pa,class_,style,ext,la,x,y,dx,dy,rot,textlen) =
+textContent (cpa,ca,gea,pa,class_,style,ext,tr,la,x,y,dx,dy,rot,textlen) =
   do t <- contentMaybe
-     let st :: (Read a, RealFloat a, RealFloat n) => HashMaps b n -> [(SVGStyle n a)]
-         st hmaps = (parseStyles style hmaps) ++
-                    (parsePA  pa  hmaps) ++
-                    (cssStylesFromMap hmaps "text" (id1 ca) class_)
+     let st :: (Read a, RealFloat a, RealFloat n) => (HashMaps b n, ViewBox n) -> [(SVGStyle n a)]
+         st (hmaps,_) = Debug.Trace.trace ("styles# " ++ show style) $  -- ++ show ( (parseStyles style hmaps) 
+                        --                                        :: (Read a, RealFloat a, RealFloat n) => [(SVGStyle n a)] )) $
+                        (parseStyles style hmaps) ++
+                        (parsePA  pa  hmaps)
 
      let f :: (V b ~ V2, N b ~ n, RealFloat n, Read n, Typeable n, Renderable (TT.Text n) b)
            => (HashMaps b n, ViewBox n) -> Diagram b
          f (maps,(minx,miny,w,h)) = anchorText pa (maybe "" T.unpack t)
-                                    # maybe id (fontSize . local . read . T.unpack) (fntSize pa)
-                                    # maybe id (font . T.unpack) (fontFamily pa)
                                     -- fontWeight
                                     # scaleY (-1)
                                     # translate (r2 (p (minx,w) 0 x, p (miny,h) 0 y))
-                                    # applyStyleSVG st maps
+                                    # (applyTr (parseTr tr))
+                                    # applyStyleSVG st (maps,(minx,miny,w,h))
+                                    # maybe id (fontSize . local . read . T.unpack) (fntSize pa)
+                                    # maybe id (font . T.unpack) (fontFamily pa)
 
      return (if isJust t then Just $ Leaf (id1 ca) mempty f
                          else Nothing)
@@ -576,27 +577,28 @@ parseTSpan :: (MonadThrow m, InputConstraints b n, RealFloat n, Read n, Renderab
                Maybe Text,
                Maybe Text,
                Maybe Text,
+               Maybe Text,
                Maybe Text) -> ConduitM Event o m (Maybe (Tag b n))
-parseTSpan (cpa,ca,gea,pa,class_,style,ext,la,x,y,dx,dy,rot,textlen) = tagName "{http://www.w3.org/2000/svg}tspan" tspanAttrs $
+parseTSpan (cpa,ca,gea,pa,class_,style,ext,tr,la,x,y,dx,dy,rot,textlen) = tagName "{http://www.w3.org/2000/svg}tspan" tspanAttrs $
   \(cpa1,ca1,gea1,pa1,class1,style1,ext1,x1,y1,dx1,dy1,rot1,textlen1,lAdjust1,role) ->
     do t <- contentMaybe
-       let st :: (Read a, RealFloat a, RealFloat n) => HashMaps b n -> [(SVGStyle n a)]
-           st hmaps = (parseStyles style hmaps) ++
-                      (parseStyles style1 hmaps) ++
-                      (parsePA  pa  hmaps) ++
-                      (parsePA  pa1  hmaps) ++
-                      (cssStylesFromMap hmaps "text" (id1 ca) class_)
+       let st :: (Read a, RealFloat a, RealFloat n) => (HashMaps b n, ViewBox n) -> [(SVGStyle n a)]
+           st (hmaps,_) = (parseStyles style hmaps) ++
+                          (parseStyles style1 hmaps) ++
+                          (parsePA  pa  hmaps) ++
+                          (parsePA  pa1  hmaps) ++
+                          (cssStylesFromMap hmaps "tspan" (id1 ca) class_)
 
        let f :: (V b ~ V2, N b ~ n, RealFloat n, Read n, Typeable n, Renderable (TT.Text n) b)
              => (HashMaps b n, ViewBox n) -> Diagram b
            f (maps,(minx,miny,w,h)) = anchorText pa (maybe "" T.unpack t)
-                                      # maybe id (fontSize . local . read . T.unpack) (pref (fntSize pa1) (fntSize pa))
-                                      # maybe id (font . T.unpack) (pref (fontFamily pa1) (fontFamily pa))
-                                      -- fontWeight
-                                      # scaleY (-1)
-                                      # translate (r2 (p (minx,w) 0 x, p (miny,h) 0 y))
-                                      # translate (r2 (p (minx,w) 0 x1, p (miny,h) 0 y1))
-                                      # applyStyleSVG st maps
+                             # maybe id (fontSize . local . read . T.unpack) (pref (fntSize pa1) (fntSize pa))
+                             # maybe id (font . T.unpack) (pref (fontFamily pa1) (fontFamily pa))
+                             -- fontWeight
+                             # scaleY (-1)
+                             # translate (r2 (p (minx,w) 0 (pref x1 x), p (miny,h) 0 (pref y1 y)))
+                             # (applyTr (parseTr tr))
+                             # applyStyleSVG st (maps,(minx,miny,w,h))
        return $ Leaf (id1 ca) mempty f
 
 

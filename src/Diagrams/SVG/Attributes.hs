@@ -261,6 +261,9 @@ getTransformations (Matrix a b c d e f)
    = (translateX x) . (translateY y) . (scaleX scX) . (scaleY scY) . (rotateBy angle)
   where (angle, scX, scY, x, y) = matrixDecompose (Matrix a b c d e f)
 
+
+-- matrix(0.70710678,-0.70710678,0.70710678,0.70710678,0,0)
+
 getTransformations (Rotate (T1 angle)) = rotateBy angle
 getTransformations (Rotate (T3 angle x y)) = id -- rotationAbout (p2 (x,y)) (angle)
 getTransformations (Scale (T1 x))   = scaleX x
@@ -271,7 +274,7 @@ getTransformations (SkewY (T1 y)) = id
 -- | See <http://math.stackexchange.com/questions/13150/extracting-rotation-scale-values-from-2d-transformation-matrix/13165#13165>
 matrixDecompose (Matrix m11 m12 m21 m22 m31 m32) = (rotation, scX, scY, transX, transY)
   where
-    rotation = atan2 m12 m21
+    rotation = (atan2 m12 m22) / (2*pi)
     scX | m11 >= 0  =   sqrt (m11*m11 + m21*m21)
         | otherwise = - sqrt (m11*m11 + m21*m21)
     scY | m22 >= 0  =   sqrt (m12*m12 + m22*m22)
@@ -344,6 +347,8 @@ parsePA pa (nodes,css,grad) = l
           (parseTempl styleStrokeLineCapVal)     (strokeLinecap pa),
           (parseTempl styleStrokeLineJoinVal)    (strokeLinejoin pa),
           (parseTempl styleStrokeMiterLimitVal)  (strokeMiterlimit pa),
+          (parseTempl styleFontFamily)           (fontFamily pa),
+          (parseTempl styleFontSize)             (fntSize pa),
           (parseTempl (styleClipPathVal nodes))  (clipPath pa),
           (parseTempl styleStrokeDashArrayVal)   (strokeDasharray pa) ]
 
@@ -356,8 +361,14 @@ parsePA pa (nodes,css,grad) = l
 data SVGStyle n a = Fill (AlphaColour a) | FillTex (Texture n) | FillOpacity Double | FillRule FR | Opacity Double
                   | Stroke (AlphaColour a) | StrokeTex (Texture n) | StrokeWidth (LenPercent n) | StrokeLineCap LineCap
                   | StrokeLineJoin LineJoin | StrokeMiterLimit n | StrokeDasharray [LenPercent n] | StrokeOpacity Double
+                  | FontFamily String | FontStyle FStyle | FontVariant FVariant | FontWeight FWeight | FontStretch FStretch
+                  | FontSize (LenPercent n)
                   | ClipPath (Path V2 n)
                   | EmptyStyle
+
+
+-- "font-style:normal;text-align:start;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:start"
+-- fontStyle letterSpacing wordSpacing writingMode textAnchor
 
 data Unit = EM | EX | PX | IN | CM | MM | PT | PC deriving Show
 data FR = Even_Odd | Nonzero | Inherit  deriving Show
@@ -368,6 +379,12 @@ instance Show (SVGStyle n a) where
   show (FillTex t) = "Filltex"
   show (FillRule r) = "FillRule"
   show (FillOpacity d) = "FillOpacity"
+  show (FontFamily f) = "FontFamily"
+  show (FontStyle f) = "FontStyle"
+  show (FontVariant f) = "FontVariant"
+  show (FontWeight f) = "FontWeight"
+  show (FontStretch f) = "FontStretch"
+  show (FontSize f) = "FontSize"
   show (Diagrams.SVG.Attributes.Opacity d) = "Opacity"
   show (StrokeOpacity o) = "StrokeOpacity"
   show (Stroke s) = "Stroke"
@@ -392,7 +409,11 @@ parseStyles text hmaps = either (const []) id $
 parseStyleAttr (ns,css,grad) =
   AT.choice [styleFillRule, styleStrokeWidth, styleStrokeDashArray, styleFill css grad, styleStroke css grad, styleStopColor,
              styleStopOpacity, styleFillOpacity, styleStrokeOpacity, styleOpacity,
-             styleStrokeLineCap, styleStrokeLineJoin, styleStrokeMiterLimit, styleClipPath ns]
+             styleFontFamily, styleFontStyle, styleFontVariant, styleFontWeight, styleFontStretch, styleFontSize,
+             styleStrokeLineCap, styleStrokeLineJoin, styleStrokeMiterLimit, styleClipPath ns, skipOne]
+
+skipOne = do str <- AT.manyTill AT.anyChar (AT.char ';') -- TODO end of input ?
+             return EmptyStyle
 
 -- | This function is called on every tag and returns a list of style-attributes to apply 
 --   (if there is a rule that matches)
@@ -441,6 +462,7 @@ fragment x = fmap snd (parseTempl parseIRI x) -- look only for the text after "#
 
 -- | Inital styles, see: <http://www.w3.org/TR/SVG/painting.html#FillProperty>
 initialStyles = lwL 1 . fc black . lineCap LineCapButt . lineJoin LineJoinMiter . lineMiterLimit 4 . lcA transparent
+--                . fontSize medium
                -- fillRule nonzero -- TODO
                -- fillOpcacity 1 -- TODO
                -- stroke-opacity 1 #
@@ -456,6 +478,13 @@ getStyles (FillRule Even_Odd) = fillRule EvenOdd
 getStyles (FillRule Nonzero) = id
 getStyles (FillRule Inherit) = id
 getStyles (FillOpacity x) = Diagrams.Prelude.opacity x
+getStyles (FontFamily str) = font str
+getStyles (FontStyle s) = id
+getStyles (FontVariant s) = id
+getStyles (FontWeight s) = id
+getStyles (FontStretch s) = id
+getStyles (FontSize (Len len)) = fontSize (local len)
+-- getStyles (FontSize (Percent len)) = fontSize (local len)
 getStyles (Diagrams.SVG.Attributes.Opacity x) = Diagrams.Prelude.opacity x
 getStyles (StrokeOpacity x) | x == 0    = lwL 0
                             | otherwise = Diagrams.Prelude.opacity x -- we currently don't differentiate between fill opacity and stroke opacity
@@ -557,6 +586,93 @@ styleStrokeWidth =
 styleStrokeWidthVal =
   do len <- styleLength
      return (StrokeWidth len)
+
+-------------------------------------------------------------------------------------
+-- font
+
+styleFontFamily =
+  do AT.skipSpace
+     AT.string "font-family:"
+     str <- AT.manyTill AT.anyChar theEnd
+     return (FontFamily str)
+
+theEnd = do AT.choice [AT.char ';', do { endOfInput; return ' '}]
+
+
+data FStyle = NormalStyle | Italic | Oblique | FSInherit
+
+styleFontStyle =
+  do AT.skipSpace
+     AT.string "font-style:"
+     AT.choice [ do { string "normal";  return (FontStyle NormalStyle)}
+               , do { string "italic";  return (FontStyle Italic)}
+               , do { string "oblique"; return (FontStyle Oblique)}
+               , do { string "inherit"; return (FontStyle FSInherit)}
+               ]
+
+
+data FVariant = NormalVariant | SmallCaps | VInherit
+
+styleFontVariant =
+  do AT.skipSpace
+     AT.string "font-variant:"
+     AT.choice [ do { string "normal";      return (FontVariant NormalVariant)}
+               , do { string "small-caps";  return (FontVariant SmallCaps)}
+               , do { string "inherit";     return (FontVariant VInherit)}
+               ]
+
+
+data FWeight = NormalWeight | Bold | Bolder | Lighter 
+             | N100 | N200 | N300 | N400 | N500 | N600 | N700 | N800 | N900
+             | FWInherit
+
+styleFontWeight =
+  do AT.skipSpace
+     AT.string "font-weight:"
+     AT.choice [ do { string "normal";  return (FontWeight NormalWeight)}
+               , do { string "bold";    return (FontWeight Bold)}
+               , do { string "bolder";  return (FontWeight Bolder)}
+               , do { string "lighter"; return (FontWeight Lighter)}
+               , do { string "100";     return (FontWeight N100)}
+               , do { string "200";     return (FontWeight N200)}
+               , do { string "300";     return (FontWeight N300)}
+               , do { string "400";     return (FontWeight N400)}
+               , do { string "500";     return (FontWeight N500)}
+               , do { string "600";     return (FontWeight N600)}
+               , do { string "700";     return (FontWeight N700)}
+               , do { string "800";     return (FontWeight N800)}
+               , do { string "900";     return (FontWeight N900)}
+               , do { string "inherit"; return (FontWeight FWInherit)}
+               ]
+
+
+data FStretch = NormalStretch | Wider | Narrower | UltraCondensed | ExtraCondensed | Condensed
+              | SemiCondensed | SemiExpanded | Expanded | ExtraExpanded | UltraExpanded | SInherit
+
+styleFontStretch =
+  do AT.skipSpace
+     AT.string "font-stretch:"
+     AT.choice [ do { string "normal";          return (FontStretch NormalStretch)}
+               , do { string "wider";           return (FontStretch Wider)}
+               , do { string "narrower";        return (FontStretch Narrower)}
+               , do { string "ultra-condensed"; return (FontStretch UltraCondensed)}
+               , do { string "extra-condensed"; return (FontStretch ExtraCondensed)}
+               , do { string "condensed";       return (FontStretch Condensed)}
+               , do { string "semi-condensed";  return (FontStretch SemiCondensed)}
+               , do { string "semi-expanded";   return (FontStretch SemiExpanded)}
+               , do { string "expanded";        return (FontStretch Expanded)}
+               , do { string "extra-expanded";  return (FontStretch ExtraExpanded)}
+               , do { string "ultra-expanded";  return (FontStretch UltraExpanded)}
+               , do { string "inherit";         return (FontStretch SInherit)}
+               ]
+
+styleFontSize =
+  do AT.skipSpace
+     AT.string "font-size:"
+     len <- styleLength
+     return (FontSize len)
+
+------------------------------------------------------------------------------------------------------------
 
 -- | See <http://www.w3.org/TR/SVG/types.html#Length>
 styleLength =
