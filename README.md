@@ -43,7 +43,7 @@ Support of [SVG 1.1](http://www.w3.org/TR/SVG/):
 - [ ] fill = "none" => path open
 - [ ] Scale viewbox to width and height
 - [ ] Bug in arc command
-- [ ] Use patched xml-conduit instead of my patched version in the Text folder
+- [ ] marker tag
 - [ ] Transform exceptions into Left values in Image.hs (if monad transformers and conduit is easy for you please help me)
 - [ ] inherit-attribute
 - [ ] display-attribute
