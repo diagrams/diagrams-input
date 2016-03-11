@@ -258,7 +258,7 @@ getTransformations (Tr (T2 x y)) = (translateX x) . (translateY y)
 
 -- | See <http://www.w3.org/TR/SVG11/coords.html#TransformMatrixDefined>
 getTransformations (Matrix a b c d e f)
-   = (translateX x) . (translateY y) . (scaleX scX) . (scaleY scY) . (rotateBy angle)
+   = (translateX x) . (translateY y) . (rotateBy angle) . (scaleX scX) . (scaleY scY)
   where (angle, scX, scY, x, y) = matrixDecompose (Matrix a b c d e f)
 
 
@@ -462,7 +462,7 @@ fragment x = fmap snd (parseTempl parseIRI x) -- look only for the text after "#
 
 -- | Inital styles, see: <http://www.w3.org/TR/SVG/painting.html#FillProperty>
 initialStyles = lwL 1 . fc black . lineCap LineCapButt . lineJoin LineJoinMiter . lineMiterLimit 4 . lcA transparent
---                . fontSize medium
+                . fontSize medium
                -- fillRule nonzero -- TODO
                -- fillOpcacity 1 -- TODO
                -- stroke-opacity 1 #

@@ -1,14 +1,5 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE NoMonomorphismRestriction #-}
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TypeFamilies #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE DeriveDataTypeable    #-}
-{-# LANGUAGE ConstraintKinds #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE ConstraintKinds, DeriveDataTypeable, ExistentialQuantification, FlexibleContexts, FlexibleInstances, GADTs,
+             MultiParamTypeClasses, NoMonomorphismRestriction, OverloadedStrings, TypeFamilies, UndecidableInstances #-}
 
 -------------------------------------------------------------------
 -- |
@@ -26,15 +17,15 @@
 module Diagrams.SVG.ReadSVG
     (
     -- * Main functions
-      PreserveAR(..)
+      readSVGFile
+    , preserveAspectRatio
+    , nodes
+    , insertRefs
+    , PreserveAR(..)
     , AlignSVG(..)
     , Place(..)
     , MeetOrSlice(..)
     , InputConstraints(..)
-    , readSVGFile
-    , preserveAspectRatio
-    , nodes
-    , insertRefs
     -- * Parsing of basic structure tags
     , parseSVG
     , parseG
@@ -100,7 +91,8 @@ import           Diagrams.SVG.Attributes
 import           Diagrams.SVG.Fonts.ReadFont
 import           Diagrams.SVG.Path (commands, commandsToPaths, PathCommand(..))
 import           Diagrams.SVG.Tree
-import           Filesystem.Path (FilePath, extension)
+import           Filesystem.Path (FilePath(..), extension)
+import           Filesystem.Path.CurrentOS (encodeString)
 import           Prelude hiding (FilePath)
 import           Text.XML.Stream.Parse hiding (parseText)
 import           Text.CSS.Parse (parseBlocks)
@@ -126,13 +118,14 @@ import           Debug.Trace
 -- @
 --
 readSVGFile :: (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Renderable (DImage n Embedded) b, -- TODO upper example
-                Typeable b, Typeable n, Show n, Read n, Renderable (TT.Text n) b) => FilePath -> IO (Either String (Diagram b))
+                Typeable b, Typeable n, Show n, Read n, n ~ Place, Renderable (TT.Text n) b) 
+             => Filesystem.Path.FilePath -> IO (Either String (Diagram b))
 readSVGFile fp = if (extension fp) /= (Just "svg") then return $ Left "Not a svg file" else -- TODO All exceptions into left values
   runResourceT $ runEitherT $ do
-    tree <- lift (parseFile def fp $$ force "error in parseSVG" parseSVG)
+    tree <- lift (parseFile def (encodeString fp) $$ force "error in parseSVG" parseSVG)
     right (diagram tree)
 
-diagram :: (RealFloat n, V b ~ V2, n ~ N b, Typeable n, Read n) => Tag b n -> Diagram b
+diagram :: (RealFloat n, V b ~ V2, n ~ N b, Typeable n, Read n, n ~ Place) => Tag b n -> Diagram b
 diagram tr = (insertRefs ((nmap,cssmap,expandedGradMap),(0,0,100,100)) tr) # scaleY (-1) # initialStyles
   where
     (ns,css,grad,fonts) = nodes Nothing ([],[],[], []) tr
@@ -377,11 +370,12 @@ parsePolyLine = tagName "{http://www.w3.org/2000/svg}polyline" polygonAttrs $
                    (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "polyline" (id1 ca) class_)
     let ps = parsePoints (fromJust points)
-    let path viewbox = fromVertices (map p2 ps) # applyTr (parseTr tr)
-                                                # translate (r2 (head ps))
+    let path viewbox = fromVertices (map p2 ps) # translate (r2 (head ps))
+                                                # applyTr (parseTr tr)
+
     let f (maps,viewbox) = fromVertices (map p2 ps) # strokeLine
-                                                    # applyTr (parseTr tr)
                                                     # translate (r2 (head ps))
+                                                    # applyTr (parseTr tr)
                                                     # applyStyleSVG st maps
     return $ Leaf (id1 ca) path f
 
@@ -394,12 +388,12 @@ parsePolygon = tagName "{http://www.w3.org/2000/svg}polygon" polygonAttrs $
                    (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "polygon" (id1 ca) class_)
     let ps = parsePoints (fromJust points)
-    let path viewbox = fromVertices (map p2 ps) # applyTr (parseTr tr)
-                                                # translate (r2 (head ps))
+    let path viewbox = fromVertices (map p2 ps) # translate (r2 (head ps))
+                                                # applyTr (parseTr tr)
     let f (maps,viewbox) = fromVertices (map p2 ps) # closeLine
                                                     # strokeLoop
-                                                    # applyTr (parseTr tr)
                                                     # translate (r2 (head ps))
+                                                    # applyTr (parseTr tr)
                                                     # applyStyleSVG st maps
     return $ Leaf (id1 ca) path f
 
@@ -497,7 +491,7 @@ parseText = tagName "{http://www.w3.org/2000/svg}text" textAttrs $
        return $ SubTree True (id1 ca)
                              Nothing
                              Nothing
-                             (\maps -> (applyStyleSVG st maps) . (fontSize medium))
+                             (\maps -> applyStyleSVG st maps)
                              insideText
 
 tContent (cpa,ca,gea,pa,class_,style,ext,tr,la,x,y,dx,dy,rot,textlen)
@@ -535,9 +529,7 @@ textContent :: (MonadThrow m, InputConstraints b n, RealFloat n, Read n, Rendera
 textContent (cpa,ca,gea,pa,class_,style,ext,tr,la,x,y,dx,dy,rot,textlen) =
   do t <- contentMaybe
      let st :: (Read a, RealFloat a, RealFloat n) => (HashMaps b n, ViewBox n) -> [(SVGStyle n a)]
-         st (hmaps,_) = Debug.Trace.trace ("styles# " ++ show style) $  -- ++ show ( (parseStyles style hmaps) 
-                        --                                        :: (Read a, RealFloat a, RealFloat n) => [(SVGStyle n a)] )) $
-                        (parseStyles style hmaps) ++
+         st (hmaps,_) = (parseStyles style hmaps) ++
                         (parsePA  pa  hmaps)
 
      let f :: (V b ~ V2, N b ~ n, RealFloat n, Read n, Typeable n, Renderable (TT.Text n) b)
@@ -814,7 +806,10 @@ parseTitle = tagName "{http://www.w3.org/2000/svg}title" descAttrs
    do title <- content
       return $ Leaf (id1 ca) mempty mempty
 
-skipArbitraryTag = tagSkip (Leaf Nothing mempty mempty)
+skipArbitraryTag :: (MonadThrow m, InputConstraints b n, Renderable (TT.Text n) b, Read n) => Consumer Event m (Maybe (Tag b n))
+skipArbitraryTag = do t <- ignoreAllTreesContent
+                      if isJust t then return (Just $ Leaf (Just "") mempty mempty)
+                                  else return Nothing
 
 -- | Parse \<meta\>, see <http://www.w3.org/TR/SVG/struct.html#DescriptionAndTitleElements>
 --

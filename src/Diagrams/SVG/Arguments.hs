@@ -68,28 +68,28 @@ import Text.XML.Stream.Parse
 import Diagrams.SVG.Attributes
 
 coreAttributes =
-  do l <- mapM optionalAttr
+  do l <- mapM attr
       [ "id", "base", "lang", "space"] -- "xml:base", "xml:lang", "xml:space"]
      return $ (\[a,b,c,d] -> CA a b c d) l
 
 conditionalProcessingAttributes =
-  do l <- mapM optionalAttr
+  do l <- mapM attr
       [ "requiredFeatures", "requiredExtensions", "systemLanguage"]
      return $ (\[a,b,c] -> CPA a b c) l
 
 documentEventAttributes =
-  do l <- mapM optionalAttr
+  do l <- mapM attr
       [ "onunload", "onabort", "onerror", "onresize", "onscroll", "onzoom"]
      return $ (\[a,b,c,d,e,f] -> DEA a b c d e f) l
 
 graphicalEventAttributes =
-  do l <- mapM optionalAttr
+  do l <- mapM attr
       [ "onfocusin", "onfocusout", "onactivate", "onclick", "onmousedown", "onmouseup", 
         "onmouseover", "onmousemove", "onmouseout", "onload"]
      return $ (\[a,b,c,d,e,f,g,h,i,j] -> GEA a b c d e f g h i j) l
 
 presentationAttributes =
-  do l <- mapM optionalAttr
+  do l <- mapM attr
       ["alignmentBaseline","baseline-shift","clip","clip-path", "clip-rule",
        "color", "color-interpolation", "color-interpolation-filters", "color-profile",
        "color-rendering", "cursor", "direction", "display", "dominant-baseline", "enable-background",
@@ -108,7 +108,7 @@ presentationAttributes =
         g0 g1 i k l0 l1 m0 m1 m2 m3 o0 o1 p s0 s1 s2 s3 s4 s5 s6 s7 s8 s9 s10 t0 t1 t2 u v w0 w1 ) l
 
 filterPrimitiveAttributes =
-  do l <- mapM optionalAttr
+  do l <- mapM attr
       [ "x","y","widh","height","result"]
      return $ (\[x,y,w,h,r] -> FPA x y w h r) l
 
@@ -117,21 +117,21 @@ filterPrimitiveAttributes =
 -- prefix ns attribute = Name attribute ns Nothing
 
 xlinkAttributes = -- xlinkNamespace is usually http://www.w3.org/1999/xlink
-  do l <- mapM optionalAttr
+  do l <- mapM attr
       [ "{http://www.w3.org/1999/xlink}href", "{http://www.w3.org/1999/xlink}show", "{http://www.w3.org/1999/xlink}actuate",
         "{http://www.w3.org/1999/xlink}type", "{http://www.w3.org/1999/xlink}role", "{http://www.w3.org/1999/xlink}arcrole",
         "{http://www.w3.org/1999/xlink}title"]
      return $ (\[a,b,c,d,e,f,g] -> XLA a b c d e f g) l
 
 xmlnsNameSpaces =
-  do l <- mapM optionalAttr
+  do l <- mapM attr
       [ "{http://www.w3.org/2000/svg}xlink","{http://www.w3.org/2000/svg}dc", "{http://www.w3.org/2000/svg}cc",
         "{http://www.w3.org/2000/svg}rdf", "{http://www.w3.org/2000/svg}svg", "{http://www.w3.org/2000/svg}sodipodi",
         "{http://www.w3.org/2000/svg}inkscape" ]
      return $ (\[xlink,dc,cc,rdf,svg,sodipodi,inkscape] -> NSP xlink dc cc rdf svg sodipodi inkscape) l
 
 xmlNameSpaces =
-  do l <- mapM optionalAttr
+  do l <- mapM attr
       [ "{http://www.w3.org/XML/1998/namespace}space" ] -- the only attribute that seems to be used so far in the xml namespace is  xml:space="preserve"
      return $ (\[space] -> space) l
 
@@ -147,7 +147,7 @@ svgAttrs =
      pa <- presentationAttributes
      xmlns <- xmlnsNameSpaces
      xml <- xmlNameSpaces
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","externalResourcesRequired","x","y","width","height","viewBox","preserveAspectRatio",
        "zoomAndPan", "version", "baseProfile", "contentScriptType", "contentStyleType"]
      ignoreAttrs
@@ -160,36 +160,36 @@ gAttrs =
      ca <- coreAttributes
      gea <- graphicalEventAttributes
      pa <- presentationAttributes
-     class_ <- optionalAttr "class"
-     style <- optionalAttr "style"
-     ext <- optionalAttr "externalResourceRequired"
-     tr <- optionalAttr "transform"
+     class_ <- attr "class"
+     style <- attr "style"
+     ext <- attr "externalResourceRequired"
+     tr <- attr "transform"
      ignoreAttrs
      return (cpa,ca,gea,pa,class_,style,ext,tr)
 
 -- | Attributes for \<g\> and \<defs\>, see <http://www.w3.org/TR/SVG/struct.html#GElement>
 sAttrs =
   do ca <- coreAttributes
-     type_ <- optionalAttr "type"
-     media <- optionalAttr "media"
-     title <- optionalAttr "title"
+     type_ <- attr "type"
+     media <- attr "media"
+     title <- attr "title"
      ignoreAttrs
      return (ca,type_,media,title)
 
 -- | Attributes for \<desc\>, see <http://www.w3.org/TR/SVG/struct.html#DescriptionAndTitleElements>
 descAttrs =
   do ca <- coreAttributes
-     class_ <- optionalAttr "class"
-     style <- optionalAttr "style"
+     class_ <- attr "class"
+     style <- attr "style"
      ignoreAttrs
-     return (ca,class_,style)	 
+     return (ca,class_,style)
 
 -- | Attributes for \<symbol\>, see <http://www.w3.org/TR/SVG/struct.html#SymbolElement>
 symbolAttrs =
   do ca <- coreAttributes
      gea <- graphicalEventAttributes
      pa <- presentationAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","externalResourcesRequired","preserveAspectRatio","viewBox"]
      ignoreAttrs
      return $ (\[class_,style,ext,ar,viewbox] -> 
@@ -202,7 +202,7 @@ useAttrs =
      gea <- graphicalEventAttributes
      pa <- presentationAttributes
      xlink <- xlinkAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","externalResourcesRequired","transform","x","y","width","height"]
      ignoreAttrs
      return $ (\[class_,style,ext,tr,x,y,w,h] -> 
@@ -214,10 +214,10 @@ switchAttrs =
      ca <- coreAttributes
      gea <- graphicalEventAttributes
      pa <- presentationAttributes
-     class_ <- optionalAttr "class"
-     style <- optionalAttr "style"
-     ext <- optionalAttr "externalResourcesRequired"
-     tr <- optionalAttr "transform"
+     class_ <- attr "class"
+     style <- attr "style"
+     ext <- attr "externalResourcesRequired"
+     tr <- attr "transform"
      ignoreAttrs
      return (cpa,ca,gea,pa,class_,style,ext,tr)
 
@@ -231,7 +231,7 @@ rectAttrs =
      ca <- coreAttributes
      gea <- graphicalEventAttributes
      pa <- presentationAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","externalResourcesRequired","preserveAspectRatio","transform","x","y",
        "width","height","rx","ry"]
      ignoreAttrs
@@ -244,7 +244,7 @@ circleAttrs =
      ca <- coreAttributes
      gea <- graphicalEventAttributes
      pa <- presentationAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","externalResourcesRequired","transform","r","cx","cy"]
      ignoreAttrs
      return $ (\[class_,style,ext,tr,r,cx,cy] -> 
@@ -256,7 +256,7 @@ ellipseAttrs =
      ca <- coreAttributes
      gea <- graphicalEventAttributes
      pa <- presentationAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","externalResourcesRequired","transform","rx","ry","cx","cy"]
      ignoreAttrs
      return $ (\[class_,style,ext,tr,rx,ry,cx,cy] -> 
@@ -268,7 +268,7 @@ lineAttrs =
      ca <- coreAttributes
      gea <- graphicalEventAttributes
      pa <- presentationAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","externalResourcesRequired","transform","x1","y1","x2","y2"]
      ignoreAttrs
      return $ (\[class_,style,ext,tr,x1,y1,x2,y2] -> 
@@ -280,7 +280,7 @@ polygonAttrs =
      ca <- coreAttributes
      gea <- graphicalEventAttributes
      pa <- presentationAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","externalResourcesRequired","transform","points"]
      ignoreAttrs
      return $ (\[class_,style,ext,tr,points] -> 
@@ -292,7 +292,7 @@ pathAttrs =
      ca <- coreAttributes
      gea <- graphicalEventAttributes
      pa <- presentationAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","externalResourcesRequired","transform","d","pathLength"]
      ignoreAttrs
      return $ (\[class_,style,ext,tr,d,pathLength] -> 
@@ -304,7 +304,7 @@ clipPathAttrs =
   do cpa <- conditionalProcessingAttributes
      ca <- coreAttributes
      pa <- presentationAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","externalResourcesRequired","transform","clipPathUnits"]
      ignoreAttrs
      return $ (\[class_,style,ext,tr,units] -> 
@@ -315,7 +315,7 @@ patternAttrs =
   do cpa <- conditionalProcessingAttributes
      ca <- coreAttributes
      pa <- presentationAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","externalResourcesRequired","viewBox","preserveAspectRatio","x","y",
        "width","height","patternUnits","patternContentUnits","patternTransform"]
      ignoreAttrs
@@ -329,7 +329,7 @@ imageAttrs =
      gea <- graphicalEventAttributes
      xlink <- xlinkAttributes
      pa <- presentationAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","externalResourcesRequired","preserveAspectRatio","transform",
        "x","y","width","height"]
      ignoreAttrs
@@ -340,7 +340,7 @@ imageAttrs =
 fontAttrs =
   do ca <- coreAttributes
      pa <- presentationAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","externalResourcesRequired","horiz-origin-x","horiz-origin-y","horiz-adv-x",
        "vert-origin-x","vert-origin-y","vert-adv-y"]
      ignoreAttrs
@@ -350,7 +350,7 @@ fontAttrs =
 -- | Attributes for \<font-face\>
 fontFaceAttrs =
   do ca <- coreAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["font-family","font-style","font-variant","font-weight","font-stretch","font-size","unicode-range","units-per-em","panose-1",
        "stemv","stemh","slope","cap-height","x-height","accent-height", "ascent", "descent", "widths", "bbox", "ideographic",
        "alphabetic","mathematical", "hanging", "v-ideographic", "v-alphabetic", "v-mathematical", "v-hanging", "underline-position",
@@ -368,7 +368,7 @@ fontFaceAttrs =
 missingGlyphAttrs =
   do ca <- coreAttributes
      pa <- presentationAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","d","horiz-adv-x","vert-origin-x","vert-origin-y","vert-adv-y"]
      ignoreAttrs
      return $ (\[class_,style,d,horizAdvX,vertOriginX,vertOriginY,vertAdvY] -> 
@@ -377,7 +377,7 @@ missingGlyphAttrs =
 glyphAttrs =
   do ca <- coreAttributes
      pa <- presentationAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","d","horiz-adv-x","vert-origin-x","vert-origin-y","vert-adv-y","unicode","glyph-name",
        "orientation","arabic-form","lang"]
      ignoreAttrs
@@ -386,7 +386,7 @@ glyphAttrs =
 
 kernAttrs =
   do ca <- coreAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["u1","g1","u2","g2","k"]
      ignoreAttrs
      return $ (\[u1,g1,u2,g2,k] -> 
@@ -398,7 +398,7 @@ filterAttrs =
   do ca <- coreAttributes
      pa <- presentationAttributes
      xlink <- xlinkAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","externalResourcesRequired","x","y","width","height","filterRes","filterUnits","primitiveUnits"]
      ignoreAttrs
      return $ (\[class_,style,ext,x,y,w,h,filterRes,filterUnits,primUnits] -> 
@@ -408,7 +408,7 @@ linearGradAttrs =
   do ca <- coreAttributes
      pa <- presentationAttributes
      xlink <- xlinkAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","externalResourcesRequired","x1","y1","x2","y2","gradientUnits","gradientTransform","spreadMethod"]
      ignoreAttrs
      return $        (\[class_,style,ext,x1,y1,x2,y2,gradientUnits,gradientTransform,spreadMethod] -> 
@@ -418,7 +418,7 @@ radialGradAttrs =
   do ca <- coreAttributes
      pa <- presentationAttributes
      xlink <- xlinkAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","externalResourcesRequired","cx","cy","r","fx","fy","gradientUnits","gradientTransform","spreadMethod"]
      ignoreAttrs
      return $        (\[class_,style,ext,cx,cy,r,fx,fy,gradientUnits,gradientTransform,spreadMethod] -> 
@@ -435,9 +435,9 @@ stopAttrs =
   do ca <- coreAttributes
      pa <- presentationAttributes
      xlink <- xlinkAttributes
-     class_ <- optionalAttr "class"
-     style  <- optionalAttr "style"
-     offset <- optionalAttr "offset"
+     class_ <- attr "class"
+     style  <- attr "style"
+     offset <- attr "offset"
      ignoreAttrs
      return $ (ca,pa,xlink,class_,style,offset)
 
@@ -447,7 +447,7 @@ textAttrs =
      ca <- coreAttributes
      gea <- graphicalEventAttributes
      pa <- presentationAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","externalResourcesRequired","transform","lengthAdjust",
        "x","y","dx","dy","rotate","textLength"]
      ignoreAttrs
@@ -459,7 +459,7 @@ tspanAttrs =
      ca <- coreAttributes
      gea <- graphicalEventAttributes
      pa <- presentationAttributes
-     p <- mapM optionalAttr
+     p <- mapM attr
       [ "class","style","externalResourcesRequired", "x", "y", "dx", "dy", "rotate", "textLength", "lengthAdjust", 
         "{http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd}role" ]
      ignoreAttrs
@@ -467,10 +467,10 @@ tspanAttrs =
                  (cpa,ca,gea,pa,class_,style,ext,x,y,dx,dy,rotate,textlen,lAdjust,role) ) p
 
 namedViewAttrs =
-  do l <- mapM optionalAttr
+  do l <- mapM attr
       ["pagecolor","bordercolor","borderopacity","objecttolerance","gridtolerance",
        "guidetolerance", "id","showgrid"]
-     inkscape <- mapM optionalAttr
+     inkscape <- mapM attr
        [ "{http://www.inkscape.org/namespaces/inkscape}pageopacity", "{http://www.inkscape.org/namespaces/inkscape}pageshadow",
          "{http://www.inkscape.org/namespaces/inkscape}window-width", "{http://www.inkscape.org/namespaces/inkscape}window-height",
          "{http://www.inkscape.org/namespaces/inkscape}zoom",
@@ -490,7 +490,7 @@ namedViewAttrs =
        id="perspective5175" />
 -}
 perspectiveAttrs =
-  do p <- mapM optionalAttr
+  do p <- mapM attr
        [ "{http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd}type",
          "{http://www.inkscape.org/namespaces/inkscape}vp_x",
          "{http://www.inkscape.org/namespaces/inkscape}vp_y",
@@ -507,7 +507,7 @@ feBlendAttrs =
   do ca <- coreAttributes
      pa <- presentationAttributes
      fpa <- filterPrimitiveAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","in","in2","mode"]
      ignoreAttrs
      return $ (\[class_,style,in1,in2,mode] -> (ca,pa,fpa,class_,style,in1,in2,mode) ) l
@@ -516,7 +516,7 @@ feColorMatrixAttrs =
   do ca <- coreAttributes
      pa <- presentationAttributes
      fpa <- filterPrimitiveAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","in","type","values"]
      ignoreAttrs
      return $ (\[class_,style,in1,type1,values] -> (ca,pa,fpa,class_,style,in1,type1,values) ) l
@@ -525,7 +525,7 @@ feComponentTransferAttrs =
   do ca <- coreAttributes
      pa <- presentationAttributes
      fpa <- filterPrimitiveAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","in"]
      ignoreAttrs
      return $ (\[class_,style,in1] -> (ca,pa,fpa,class_,style,in1) ) l
@@ -533,7 +533,7 @@ feCompositeAttrs =
   do ca <- coreAttributes
      pa <- presentationAttributes
      fpa <- filterPrimitiveAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","in","in2","operator","k1","k2","k3","k4"]
      ignoreAttrs
      return $ (\[class_,style,in1,in2,operator,k1,k2,k3,k4] -> (ca,pa,fpa,class_,style,in1,in2,operator,k1,k2,k3,k4) ) l
@@ -542,7 +542,7 @@ feConvolveMatrixAttrs =
   do ca <- coreAttributes
      pa <- presentationAttributes
      fpa <- filterPrimitiveAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","in","order","kernelMatrix","divisor","bias","targetX","targetY","edgeMode","kernelUnitLength","preserveAlpha"]
      ignoreAttrs
      return $ (\[class_,style,order,km,d,bias,tx,ty,em,ku,pa] -> (ca,pa,fpa,class_,style,order,km,d,bias,tx,ty,em,ku,pa) ) l
@@ -551,7 +551,7 @@ feDiffuseLightingAttrs =
   do ca <- coreAttributes
      pa <- presentationAttributes
      fpa <- filterPrimitiveAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","in","surfaceScale","diffuseConstant","kernelUnitLength"]
      ignoreAttrs
      return $ (\[class_,style,in1,surfaceScale,diffuseConstant,kuLength] -> (ca,pa,fpa,class_,style,in1,surfaceScale,diffuseConstant,kuLength) ) l
@@ -560,7 +560,7 @@ feDisplacementMapAttrs =
   do ca <- coreAttributes
      pa <- presentationAttributes
      fpa <- filterPrimitiveAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","in","in2","scale","xChannelSelector","yChannelSelector"]
      ignoreAttrs
      return $ (\[class_,style,in1,in2,sc,xChan,yChan] -> (ca,pa,fpa,class_,style,in1,in2,sc,xChan,yChan) ) l
@@ -569,7 +569,7 @@ feFloodAttrs =
   do ca <- coreAttributes
      pa <- presentationAttributes
      fpa <- filterPrimitiveAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style"]
      ignoreAttrs
      return $ (\[class_,style] -> (ca,pa,fpa,class_,style) ) l
@@ -578,7 +578,7 @@ feGaussianBlurAttrs =
   do ca <- coreAttributes
      pa <- presentationAttributes
      fpa <- filterPrimitiveAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","in","stdDeviation"]
      ignoreAttrs
      return $ (\[class_,style,in1,stdDeviation] -> (ca,pa,fpa,class_,style,in1,stdDeviation) ) l
@@ -588,7 +588,7 @@ feImageAttrs =
      pa <- presentationAttributes
      fpa <- filterPrimitiveAttributes
      xlink <- xlinkAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","externalResourcesRequired","preserveAspectRatio"]
      ignoreAttrs
      return $ (\[class_,style,ext,pa] -> (ca,pa,fpa,xlink,class_,style,ext,pa) ) l
@@ -597,7 +597,7 @@ feMergeAttrs =
   do ca <- coreAttributes
      pa <- presentationAttributes
      fpa <- filterPrimitiveAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style"]
      ignoreAttrs
      return $ (\[class_,style] -> (ca,pa,fpa,class_,style) ) l
@@ -606,7 +606,7 @@ feMorphologyAttrs =
   do ca <- coreAttributes
      pa <- presentationAttributes
      fpa <- filterPrimitiveAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","in","operator","radius"]
      ignoreAttrs 
      return $ (\[class_,style,in1,operator,radius] -> (ca,pa,fpa,class_,style,in1,operator,radius) ) l
@@ -615,7 +615,7 @@ feOffsetAttrs =
   do ca <- coreAttributes
      pa <- presentationAttributes
      fpa <- filterPrimitiveAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","in","dx","dy"]
      ignoreAttrs
      return $ (\[class_,style,in1,dx,dy] -> (ca,pa,fpa,class_,style,in1,dx,dy) ) l
@@ -624,7 +624,7 @@ feSpecularLightingAttrs =
   do ca <- coreAttributes
      pa <- presentationAttributes
      fpa <- filterPrimitiveAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","in","surfaceScale","specularConstant","specularExponent","kernelUnitLength"]
      ignoreAttrs
      return $ (\[class_,style,in1,surfaceScale,sc,se,ku] -> (ca,pa,fpa,class_,style,in1,surfaceScale,sc,se,ku) ) l
@@ -633,7 +633,7 @@ feTileAttrs =
   do ca <- coreAttributes
      pa <- presentationAttributes
      fpa <- filterPrimitiveAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","in"]
      ignoreAttrs
      return $ (\[class_,style,in1] -> (ca,pa,fpa,class_,style,in1) ) l
@@ -642,7 +642,7 @@ feTurbulenceAttrs =
   do ca <- coreAttributes
      pa <- presentationAttributes
      fpa <- filterPrimitiveAttributes
-     l <- mapM optionalAttr
+     l <- mapM attr
       ["class","style","in","in2","mode"]
      ignoreAttrs
      return $ (\[class_,style,in1,in2,mode] -> (ca,pa,fpa,class_,style,in1,in2,mode) ) l

@@ -12,14 +12,13 @@ Build-type:          Simple
 Cabal-version:       >=1.10
 
 Library
-  Exposed-modules:    Diagrams.SVG.ReadSVG
+  Exposed-modules:    Diagrams.TwoD.Input
+                      Diagrams.SVG.ReadSVG
+                      Diagrams.SVG.Arguments
                       Diagrams.SVG.Attributes
                       Diagrams.SVG.Path
                       Diagrams.SVG.Tree
-                      Diagrams.SVG.Arguments
-                      Diagrams.TwoD.Input
-                      Text.XML.Stream.Parse
-                      Text.XML.Stream.Token
+
   Build-depends:      attoparsec >= 0.10
                     , base == 4.*
                     , base64-bytestring
@@ -46,6 +45,7 @@ Library
                     , transformers
                     , unordered-containers
                     , vector
+                    , xml-conduit >= 1.3.1
                     , xml-types == 0.3.*
   Hs-source-dirs:     src
   default-language:   Haskell2010

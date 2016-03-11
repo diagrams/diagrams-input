@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleContexts, TypeFamilies #-}
 
 -----------------------------------------------------------------------------
 -- |
@@ -28,11 +28,12 @@ import           Diagrams.TwoD.Size
 import           Diagrams.TwoD.Types
 import qualified Diagrams.TwoD.Text as TT
 import           Diagrams.SVG.ReadSVG (readSVGFile, InputConstraints)
-
+import           Diagrams.SVG.Tree (Place)
 import           Filesystem.Path.CurrentOS (decodeString)
 
 -- | Load 2d formats given by a filepath and embed them
-loadImageEmbedded :: (InputConstraints b n, Renderable (TT.Text n) b, Read n) => FilePath -> IO (Either String (QDiagram b V2 n Any))
+loadImageEmbedded :: (InputConstraints b n, Renderable (TT.Text n) b, Read n, n ~ Place) 
+                   => String -> IO (Either String (QDiagram b V2 n Any))
 loadImageEmbedded path = do
   dImg <- readImage path
   svgImg <- readSVGFile (decodeString path)
@@ -42,7 +43,8 @@ loadImageEmbedded path = do
     rasterImage img = DImage (ImageRaster img) (dynamicMap imageWidth img) (dynamicMap imageHeight img) mempty
 
 -- | Load 2d formats given by a filepath and make a reference
-loadImageExternal :: (InputConstraints b n, Renderable (DImage n External) b) => FilePath -> IO (Either String (QDiagram b V2 n Any))
+loadImageExternal :: (InputConstraints b n, Renderable (DImage n External) b) 
+                   => FilePath -> IO (Either String (QDiagram b V2 n Any))
 loadImageExternal path = do
   dImg <- readImage path
 --  svgImg <- readSVGFile path

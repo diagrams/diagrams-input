@@ -186,7 +186,8 @@ myconcat list = (concat $ map sel1 list, concat $ map sel2 list, concat $ map se
         sel4 (a,b,c,d) = d
 
 ------------------------------------------------------------------------------------------------------
--- The following code is necessary to handle nested xlink:href in gradients, like in this example:
+-- The following code is necessary to handle nested xlink:href in gradients,
+-- like in this example (#linearGradient3606 in radialGradient):
 --
 --    <linearGradient
 --       id="linearGradient3606">
@@ -274,7 +275,7 @@ lookUp hmap i | (isJust i) && (isJust l) = fromJust l
 
 -- | Evaluate the tree into a diagram by inserting xlink:href references from nodes and gradients, 
 --   applying clipping and passing the viewbox to the leafs
-insertRefs :: (V b ~ V2, N b ~ n, RealFloat n) => (HashMaps b n, ViewBox n) -> Tag b n -> Diagram b
+insertRefs :: (V b ~ V2, N b ~ n, RealFloat n, Place ~ n) => (HashMaps b n, ViewBox n) -> Tag b n -> Diagram b
 
 insertRefs (maps,viewbox) (Leaf id1 path f) = (f (maps,viewbox)) # (if isJust id1 then named (T.unpack $ fromJust id1) else id)
 insertRefs (maps,viewbox) (Grad _ _) = mempty
@@ -296,8 +297,8 @@ insertRefs (maps,viewbox) (Reference selfId id1 path styles)
 insertRefs (maps,viewbox) (SubTree False _ _ _ _ _) = mempty
 insertRefs (maps,viewbox) (SubTree True id1 viewb ar styles children) =
     subdiagram # styles maps
-             --  # stretchViewBox (Diagrams.TwoD.Size.width subdiagram) (Diagrams.TwoD.Size.height subdiagram) (viewbox, ar)
                # cutOutViewBox (viewb, ar)
+               # stretchViewBox (Diagrams.TwoD.Size.width subdiagram) (Diagrams.TwoD.Size.height subdiagram) (viewb, ar)
                # (if isJust id1 then named (T.unpack $ fromJust id1) else id)
   where subdiagram = mconcat (map (insertRefs (maps, fromMaybe viewbox viewb)) children)
 
