@@ -47,7 +47,7 @@ import qualified Data.HashMap.Strict as H
 import qualified Data.Text as T
 import           Data.Text(Text(..))
 import           Data.Vector(Vector)
-import           Diagrams.Prelude
+import           Diagrams.Prelude hiding (Vector)
 import           Diagrams.TwoD.Size
 -- import           Diagrams.SVG.Fonts.ReadFont
 
