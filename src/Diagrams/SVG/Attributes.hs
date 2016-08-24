@@ -72,7 +72,7 @@ import           Data.Typeable
 import           Data.Word (Word8)
 import           Diagrams.Attributes
 import           Diagrams.Path
-import           Diagrams.Prelude
+import           Diagrams.Prelude hiding (fillOpacity, strokeOpacity)
 import           Diagrams.Segment
 import           Diagrams.SVG.Path
 import           Diagrams.SVG.Tree
