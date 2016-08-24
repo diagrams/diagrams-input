@@ -10,6 +10,9 @@ Copyright:           Tillmann Vogt (2014)
 Category:            Graphics, Diagrams
 Build-type:          Simple
 Cabal-version:       >=1.10
+Source-repository head
+  type:     git
+  location: http://github.com/diagrams/diagrams-input.git
 
 Library
   Exposed-modules:    Diagrams.TwoD.Input
