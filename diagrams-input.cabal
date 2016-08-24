@@ -18,7 +18,8 @@ Library
                       Diagrams.SVG.Attributes
                       Diagrams.SVG.Path
                       Diagrams.SVG.Tree
-
+  Other-modules:      Diagrams.SVG.Fonts.CharReference
+                      Diagrams.SVG.Fonts.ReadFont
   Build-depends:      attoparsec >= 0.10
                     , base == 4.*
                     , base64-bytestring
