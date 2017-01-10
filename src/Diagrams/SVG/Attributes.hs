@@ -752,8 +752,8 @@ styleClipPathVal hmap =
 evalPath :: RealFloat n => H.HashMap Text (Tag b n) -> Maybe (ViewBox n) -> (Tag b n) -> Path V2 n
 evalPath hmap (Just viewBox) (Leaf id1 path diagram)               = path viewBox
 evalPath hmap Nothing        (Leaf id1 path diagram)               = path (0,0,1,1) -- shouldn't happen, there should always be a viewbox
-evalPath hmap _       (SubTree _ id1 (Just viewBox) ar f children) = mconcat (map (evalPath hmap (Just viewBox)) children)
-evalPath hmap (Just viewBox) (SubTree _ id1 Nothing ar f children) = mconcat (map (evalPath hmap (Just viewBox)) children)
+evalPath hmap _       (SubTree _ id1 _ (Just viewBox) ar f children) = mconcat (map (evalPath hmap (Just viewBox)) children)
+evalPath hmap (Just viewBox) (SubTree _ id1 _ Nothing ar f children) = mconcat (map (evalPath hmap (Just viewBox)) children)
 -- evalPath hmap (Reference selfId id1 wh f) = evalPath hmap (lookUp hmap (fragment id1)) -- TODO implement (not that common)
 evalPath hmap _ _ = mempty
 

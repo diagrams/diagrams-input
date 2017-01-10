@@ -171,8 +171,11 @@ parseSVG = tagName "{http://www.w3.org/2000/svg}svg" svgAttrs $
       let st hmaps = (parseStyles style hmaps) ++ -- parse the style attribute (style="stop-color:#000000;stop-opacity:0.8")
                      (parsePA  pa  hmaps) ++ -- presentation attributes: stop-color="#000000" stop-opacity="0.8"
                      (cssStylesFromMap hmaps "svg" (id1 ca) class_)
+      let pw = if (isJust w) then parseDouble $ fromJust w else 0
+      let ph = if (isJust h) then parseDouble $ fromJust h else 0
       return $ -- Debug.Trace.trace ("@" ++ show vb ++ show (parseViewBox vb w h)) (
                SubTree True (id1 ca)
+                            (pw,ph)
                             (parseViewBox vb w h)
                             (parsePreserveAR ar)
                             (applyStyleSVG st)
@@ -198,6 +201,7 @@ parseG = tagName "{http://www.w3.org/2000/svg}g" gAttrs
                      (parsePA  pa  hmaps) ++
                      (cssStylesFromMap hmaps "g" (id1 ca) class_)
       return $ SubTree True (id1 ca)
+                            (0, 0)
                             Nothing
                             Nothing
                             (\maps -> (applyStyleSVG st maps) . (applyTr (parseTr tr)) )
@@ -224,6 +228,7 @@ parseDefs = tagName "{http://www.w3.org/2000/svg}defs" gAttrs $
                      (parsePA pa hmaps) ++
                      (cssStylesFromMap hmaps "defs" (id1 ca) class_)
       return $ SubTree False (id1 ca)
+                             (0, 0)
                              Nothing
                              Nothing
                              ( (applyTr (parseTr tr)) . (applyStyleSVG st) )
@@ -259,6 +264,7 @@ parseSymbol = tagName "{http://www.w3.org/2000/svg}symbol" symbolAttrs $
                      (parsePA  pa  hmaps) ++
                      (cssStylesFromMap hmaps "symbol" (id1 ca) class_)
       return $ SubTree False (id1 ca)
+                             (0, 0)
                              (parseViewBox viewbox Nothing Nothing)
                              (parsePreserveAR ar)
                              (applyStyleSVG st)
@@ -339,7 +345,8 @@ parseEllipse = tagName "{http://www.w3.org/2000/svg}ellipse" ellipseAttrs $
     let st hmaps = (parseStyles style hmaps) ++
                    (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "ellipse" (id1 ca) class_)
-    let path (minx,miny,w,h) = ((ellipseXY (p (minx,w) 0 rx) (p (miny,h) 0 ry) ))
+    let path (minx,miny,w,h) = Debug.Trace.trace (show (p (minx,w) 0 rx, p (miny,h) 0 ry, p (minx,w) 0 cx, p (miny,h) 0 cy) ) $
+                               ((ellipseXY (p (minx,w) 0 rx) (p (miny,h) 0 ry) ))
                                # applyTr (parseTr tr)
                                # translate (r2 (p (minx,w) 0 cx, p (miny,h) 0 cy))
     let f (maps,viewbox) = path viewbox # stroke # applyStyleSVG st maps
@@ -421,6 +428,7 @@ parseClipPath = tagName "{http://www.w3.org/2000/svg}clipPath" clipPathAttrs $
                    (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "clipPath" (id1 ca) class_)
     return $ SubTree False (id1 ca)
+                     (0, 0)
                      (parseViewBox viewbox Nothing Nothing)
                      (parsePreserveAR ar)
                      (applyStyleSVG st)
@@ -489,6 +497,7 @@ parseText = tagName "{http://www.w3.org/2000/svg}text" textAttrs $
                       (cssStylesFromMap hmaps "text" (id1 ca) class_)
        insideText <- many (tContent (cpa,ca,gea,pa,class_,style,ext,tr,la,x,y,dx,dy,rot,textlen))
        return $ SubTree True (id1 ca)
+                             (0, 0)
                              Nothing
                              Nothing
                              (\maps -> applyStyleSVG st maps)
@@ -664,7 +673,7 @@ parseRadialGradient = tagName "{http://www.w3.org/2000/svg}radialGradient" radia
                               (parseSpread spreadMethod))
      return $ Grad (id1 ca) (Gr (Diagrams.SVG.Attributes.fragment $ xlinkHref xlink) attributes Nothing stops f)
 
-extractStops (SubTree b id1 viewBox ar f children) = concat (map extractStops children)
+extractStops (SubTree b id1 wh viewBox ar f children) = concat (map extractStops children)
 extractStops (Stop stops) = [Stop stops]
 extractStops _ = []
 
@@ -771,7 +780,7 @@ parseGlyph = tagName "{http://www.w3.org/2000/svg}glyph" glyphAttrs $
   \(ca,pa,class_,style,d,horizAdvX,vertOriginX,vertOriginY,vertAdvY,unicode,glyphName,orientation,arabicForm,lang) ->
   do gs <- many gContent
      let st hmaps = parseStyles style hmaps
-     let sub = SubTree True (id1 ca) Nothing Nothing (\maps -> (applyStyleSVG st maps)) (reverse gs)
+     let sub = SubTree True (id1 ca) (0,0) Nothing Nothing (\maps -> (applyStyleSVG st maps)) (reverse gs)
      return $ GG $ Glyph (id1 ca) sub d (getN horizAdvX) (getN vertOriginX) (getN vertOriginY) (getN vertAdvY)
                          unicode glyphName orientation arabicForm lang
 

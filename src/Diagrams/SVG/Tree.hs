@@ -50,6 +50,7 @@ import           Data.Vector(Vector)
 import           Diagrams.Prelude hiding (Vector)
 import           Diagrams.TwoD.Size
 -- import           Diagrams.SVG.Fonts.ReadFont
+import           Debug.Trace
 
 -- Note: Maybe we could use the Tree from diagrams here but on the other hand this makes diagrams-input 
 -- more independent of changes of diagrams' internal structures
@@ -77,7 +78,8 @@ data Tag b n = Leaf Id (ViewBox n -> Path V2 n) ((HashMaps b n, ViewBox n) -> Di
 -- * A viewbox so that percentages are relative to this viewbox
 --
 -- * Transformations applied to the reference
-     | SubTree Bool Id (Maybe (ViewBox n)) 
+     | SubTree Bool Id (Double, Double)
+                       (Maybe (ViewBox n)) 
                        (Maybe PreserveAR) 
                        (HashMaps b n -> Diagram b -> Diagram b) 
                        [Tag b n]-- ^
@@ -130,7 +132,7 @@ data MeetOrSlice = Meet | Slice
 instance Show (Tag b n) where
   show (Leaf id1 _ _)  = "Leaf "      ++ (show id1) ++ "\n"
   show (Reference selfid id1 viewbox f) = "Reference " ++ (show id1) ++ "\n"
-  show (SubTree b id1 viewbox ar f tree) = "Sub " ++ (show id1) ++ concat (map show tree) ++ "\n"
+  show (SubTree b id1 wh viewbox ar f tree) = "Sub " ++ (show id1) ++ concat (map show tree) ++ "\n"
   show (StyleTag _)   = "Style "    ++ "\n"
   show (Grad id1 gr) = "Grad id:" ++ (show id1) -- ++ (show gr) ++ "\n"
   show (Stop _)   = "Stop " ++ "\n"
@@ -157,13 +159,13 @@ nodes viewbox (ns,css,grads,fonts) (Leaf id1 path diagram)
 -- A Reference element for the <use>-tag
 nodes viewbox (ns,css,grads,fonts) (Reference selfId id1 vb f) = (ns,css,grads,fonts)
 
-nodes viewbox (ns,css,grads,fonts)                (SubTree b id1 Nothing ar f children)
-  | isJust id1 = myconcat [ (ns ++ [(fromJust id1, SubTree b id1 viewbox ar f children)],css,grads,fonts) ,
+nodes viewbox (ns,css,grads,fonts)                (SubTree b id1 wh Nothing ar f children)
+  | isJust id1 = myconcat [ (ns ++ [(fromJust id1, SubTree b id1 wh viewbox ar f children)],css,grads,fonts) ,
                             (myconcat (map (nodes viewbox (ns,css,grads,fonts)) children))                ]
   | otherwise  = myconcat (map (nodes viewbox (ns,css,grads,fonts)) children)
 
-nodes viewbox (ns,css,grads,fonts)                (SubTree b id1 vb ar f children)
-  | isJust id1 = myconcat [ (ns ++ [(fromJust id1, SubTree b id1 vb ar f children)],css,grads,fonts) ,
+nodes viewbox (ns,css,grads,fonts)                (SubTree b id1 wh vb ar f children)
+  | isJust id1 = myconcat [ (ns ++ [(fromJust id1, SubTree b id1 wh vb ar f children)],css,grads,fonts) ,
                             (myconcat (map (nodes vb (ns,css,grads,fonts)) children))                ]
   | otherwise  = myconcat (map (nodes vb (ns,css,grads,fonts)) children)
 
@@ -283,35 +285,35 @@ insertRefs (maps,viewbox) (Stop f) = mempty
 insertRefs (maps,viewbox) (Reference selfId id1 path styles)
     | (Diagrams.TwoD.Size.width r) <= 0 || (Diagrams.TwoD.Size.height r) <= 0 = mempty
     | otherwise = referencedDiagram # styles (maps,viewbox)
-                                 -- # stretchViewBox (fromJust w) (fromJust h) viewboxPAR
                                     # cutOutViewBox viewboxPAR
+--                                    # stretchViewBox (fromJust w) (fromJust h) viewboxPAR
                                     # (if isJust selfId then named (T.unpack $ fromJust selfId) else id)
   where r = path viewbox
         viewboxPAR = getViewboxPreserveAR subTree
         referencedDiagram = insertRefs (maps,viewbox) (makeSubTreeVisible viewbox subTree)
         subTree = lookUp (sel1 maps) id1
-        getViewboxPreserveAR (SubTree _ id1 viewbox ar g children) = (viewbox, ar)
+        getViewboxPreserveAR (SubTree _ id1 wh viewbox ar g children) = (viewbox, ar)
         getViewboxPreserveAR _ = (Nothing, Nothing)
         sel1 (a,b,c) = a
 
-insertRefs (maps,viewbox) (SubTree False _ _ _ _ _) = mempty
-insertRefs (maps,viewbox) (SubTree True id1 viewb ar styles children) =
+insertRefs (maps,viewbox) (SubTree False _ _ _ _ _ _) = mempty
+insertRefs (maps,viewbox) (SubTree True id1 (w,h) viewb ar styles children) =
     subdiagram # styles maps
                # cutOutViewBox (viewb, ar)
-               # stretchViewBox (Diagrams.TwoD.Size.width subdiagram) (Diagrams.TwoD.Size.height subdiagram) (viewb, ar)
+               # (if (w > 0) && (h > 0) then stretchViewBox w h (viewb, ar) else id)
                # (if isJust id1 then named (T.unpack $ fromJust id1) else id)
   where subdiagram = mconcat (map (insertRefs (maps, fromMaybe viewbox viewb)) children)
 
 insertRefs (maps,viewbox) (StyleTag _) = mempty
 -------------------------------------------------------------------------------------------------------------------------------
 
-makeSubTreeVisible viewbox (SubTree _    id1 vb ar g children) =
-                           (SubTree True id1 (Just viewbox) ar g (map (makeSubTreeVisible viewbox) children))
+makeSubTreeVisible viewbox (SubTree _    id1 wh vb ar g children) =
+                           (SubTree True id1 wh (Just viewbox) ar g (map (makeSubTreeVisible viewbox) children))
 makeSubTreeVisible _ x = x
 
-stretchViewBox w h ((Just (minX,minY,width,height), Just par)) = preserveAspectRatio w h width height par
-stretchViewBox w h ((Just (minX,minY,width,height), Nothing))  =
-                                    preserveAspectRatio w h width height (PAR (AlignXY 0.5 0.5) Meet)
+stretchViewBox w h ((Just (minX,minY,width,height), Just par)) = preserveAspectRatio w h (width - minX) (height - minY) par
+stretchViewBox w h ((Just (minX,minY,width,height), Nothing))  = -- Debug.Trace.trace "nothing" $
+                                    preserveAspectRatio w h (width - minX) (height - minY) (PAR (AlignXY 0.5 0.5) Meet)
 stretchViewBox w h _ = id
 
 cutOutViewBox (Just (minX,minY,width,height), _) = rectEnvelope (p2 (minX, minY)) (r2 ((width - minX), (height - minY)))
@@ -355,11 +357,11 @@ preserveAspectRatio newWidth newHeight oldWidth oldHeight preserveAR image
         newAspectRatio = newWidth / newHeight
         scaX = newHeight / oldHeight
         scaY = newWidth / oldWidth
-        xPlace (PAR (AlignXY x y) Meet) i = i # scale scaX # alignBL # translateX ((newWidth  - oldWidth*scaX)*x)
+        xPlace (PAR (AlignXY x y) Meet)  i = i # scale scaX # alignBL # translateX ((newWidth  - oldWidth*scaX)*x)
         xPlace (PAR (AlignXY x y) Slice) i = i # scale scaY # alignBL # translateX ((newWidth  - oldWidth*scaX)*x)
 --                                               # view (p2 (0, 0)) (r2 (newWidth, newHeight))
 
-        yPlace (PAR (AlignXY x y) Meet) i = i # scale scaY # alignBL # translateY ((newHeight - oldHeight*scaY)*y)
+        yPlace (PAR (AlignXY x y) Meet)  i = i # scale scaY # alignBL # translateY ((newHeight - oldHeight*scaY)*y)
         yPlace (PAR (AlignXY x y) Slice) i = i # scale scaX # alignBL # translateY ((newHeight - oldHeight*scaY)*y)
 --                                               # view (p2 (0, 0)) (r2 (newWidth, newHeight))
 
