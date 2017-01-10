@@ -345,8 +345,7 @@ parseEllipse = tagName "{http://www.w3.org/2000/svg}ellipse" ellipseAttrs $
     let st hmaps = (parseStyles style hmaps) ++
                    (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "ellipse" (id1 ca) class_)
-    let path (minx,miny,w,h) = Debug.Trace.trace (show (p (minx,w) 0 rx, p (miny,h) 0 ry, p (minx,w) 0 cx, p (miny,h) 0 cy) ) $
-                               ((ellipseXY (p (minx,w) 0 rx) (p (miny,h) 0 ry) ))
+    let path (minx,miny,w,h) = ((ellipseXY (p (minx,w) 0 rx) (p (miny,h) 0 ry) ))
                                # applyTr (parseTr tr)
                                # translate (r2 (p (minx,w) 0 cx, p (miny,h) 0 cy))
     let f (maps,viewbox) = path viewbox # stroke # applyStyleSVG st maps
