@@ -38,8 +38,8 @@ Library
                     , diagrams-core >= 1.3 && < 1.5
                     , diagrams-lib >= 1.3 && < 1.5
                     , digits
-                    , either
-                    , JuicyPixels >= 3.1.5 && < 3.3
+                    , either >= 4.4
+                    , JuicyPixels >= 3.1.5 && < 3.4
                     , linear >= 1.11.3
                     , resourcet
                     , semigroups
@@ -49,7 +49,7 @@ Library
                     , transformers
                     , unordered-containers
                     , vector
-                    , xml-conduit >= 1.3.1
+                    , xml-conduit >= 1.3
                     , xml-types == 0.3.*
   Hs-source-dirs:     src
   default-language:   Haskell2010

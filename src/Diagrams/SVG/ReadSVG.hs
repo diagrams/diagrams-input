@@ -63,7 +63,7 @@ import           Codec.Picture
 import           Control.Monad.IO.Class
 import           Control.Monad.Trans.Resource
 import           Control.Monad.Trans.Class
-import           Control.Monad.Trans.Either
+import           Data.Either.Combinators
 import qualified Data.Attoparsec.Text as AT
 import qualified Data.Attoparsec.ByteString as ABS
 import qualified Data.ByteString as B
@@ -121,9 +121,8 @@ readSVGFile :: (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Render
                 Typeable b, Typeable n, Show n, Read n, n ~ Place, Renderable (TT.Text n) b) 
              => Filesystem.Path.FilePath -> IO (Either String (Diagram b))
 readSVGFile fp = if (extension fp) /= (Just "svg") then return $ Left "Not a svg file" else -- TODO All exceptions into left values
-  runResourceT $ runEitherT $ do
-    tree <- lift (parseFile def (encodeString fp) $$ force "error in parseSVG" parseSVG)
-    right (diagram tree)
+  runResourceT $ do tree <- parseFile def (encodeString fp) $$ force "error in parseSVG" parseSVG
+                    return (Right (diagram tree))
 
 diagram :: (RealFloat n, V b ~ V2, n ~ N b, Typeable n, Read n, n ~ Place) => Tag b n -> Diagram b
 diagram tr = (insertRefs ((nmap,cssmap,expandedGradMap),(0,0,100,100)) tr) # scaleY (-1) # initialStyles
@@ -155,6 +154,8 @@ font tr = fonts
 -}
 -------------------------------------------------------------------------------------
 -- Basic SVG structure
+
+tagName name = tag' (Text.XML.Stream.Parse.matching (== name))
 
 class (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n, Typeable b, Show n,
        Renderable (DImage n Embedded) b) => InputConstraints b n
@@ -815,7 +816,7 @@ parseTitle = tagName "{http://www.w3.org/2000/svg}title" descAttrs
       return $ Leaf (id1 ca) mempty mempty
 
 skipArbitraryTag :: (MonadThrow m, InputConstraints b n, Renderable (TT.Text n) b, Read n) => Consumer Event m (Maybe (Tag b n))
-skipArbitraryTag = do t <- ignoreAllTreesContent
+skipArbitraryTag = do t <- ignoreAnyTreeContent
                       if isJust t then return (Just $ Leaf (Just "") mempty mempty)
                                   else return Nothing
 
