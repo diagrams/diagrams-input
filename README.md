@@ -13,11 +13,11 @@ In the future it would be nice to have:
 
 # Usage
 The main functions are [loadimageEmbedded](https://github.com/diagrams/diagrams-input/blob/21b58f8bfed86e0a96865848c680d465027a638e/src/Diagrams/TwoD/Input.hs#L34) and [loadImageExternal](https://github.com/diagrams/diagrams-input/blob/21b58f8bfed86e0a96865848c680d465027a638e/src/Diagrams/TwoD/Input.hs#L44) that return either a Left error-message or a Right diagram.
-See the [diagrams manual] (http://projects.haskell.org/diagrams/doc/manual.html#images).
+See the [diagrams manual](http://projects.haskell.org/diagrams/doc/manual.html#images).
 
 # The SVG Parser
 The SVG parser evolved like maybe most others also did: By taking some SVG images, focussing on one image, getting it displayed correctly. See if the changes affect other images positively. Figuring out what is the most important thing to fix next. The SVG 1.1 spec was used.
-For testing purposes [diagrams-input-test] (https://github.com/diagrams/diagrams-input-test) reads and writes all images in a directory.
+For testing purposes [diagrams-input-test](https://github.com/diagrams/diagrams-input-test) reads and writes all images in a directory.
 
 ### Supported Tags
 Support of [SVG 1.1](http://www.w3.org/TR/SVG/):
@@ -59,7 +59,7 @@ Support of [SVG 1.1](http://www.w3.org/TR/SVG/):
 5. References are [inserted](https://github.com/diagrams/diagrams-input/blob/afcb278dbbaee2d58deacb58d9294810bb7606c0/src/Diagrams/SVG/Tree.hs#L256-L281) using the key-value-storage and everything is combined into one [diagram](https://github.com/diagrams/diagrams-input/blob/afcb278dbbaee2d58deacb58d9294810bb7606c0/src/Diagrams/SVG/ReadSVG.hs#L191-L192).
 
 ### Other SVG Parsers
-- Haskell: [svg-tree] (https://github.com/Twinside/svg-tree) (currently not targeted at `diagrams`)
-- Java: [Processing] (https://github.com/processing/processing/blob/7f63dad6f21db722fe98d7a1f2afaa3de6c17b4c/core/src/processing/core/PShapeSVG.java)
-- Java: [Apache Batik] (https://github.com/apache/batik)
-- Javascript: [canvg] (https://github.com/gabelerner/canvg)
+- Haskell: [svg-tree](https://github.com/Twinside/svg-tree) (currently not targeted at `diagrams`)
+- Java: [Processing](https://github.com/processing/processing/blob/7f63dad6f21db722fe98d7a1f2afaa3de6c17b4c/core/src/processing/core/PShapeSVG.java)
+- Java: [Apache Batik](https://github.com/apache/batik)
+- Javascript: [canvg](https://github.com/gabelerner/canvg)
