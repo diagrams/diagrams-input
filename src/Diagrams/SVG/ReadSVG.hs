@@ -113,8 +113,10 @@ import           Debug.Trace
 -- import Diagrams.SVG.Attributes (PreserveAR(..), AlignSVG(..), Place(..), MeetOrSlice(..))
 --
 -- main = do
---    diagramFromSVG <- readSVGFile \"svgs/web.svg\"
---    mainWith $ diagramFromSVG
+--    diagramFromSVG :: Either String (Diagram B) <- readSVGFile \"svgs/web.svg\"
+--    case diagramFromSVG of
+--      Left msg      -> error $ \"readSVGFile returned: \" <> msg
+--      Right diagram -> mainWith $ diagram
 -- @
 --
 readSVGFile :: (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Renderable (DImage n Embedded) b, -- TODO upper example
