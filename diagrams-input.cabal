@@ -1,5 +1,5 @@
 Name:                diagrams-input
-Version:             0.1
+Version:             0.1.1
 Synopsis:            Parse raster and SVG files for diagrams
 Description:         Parse raster and SVG images for the diagrams DSL.
 License:             BSD3
