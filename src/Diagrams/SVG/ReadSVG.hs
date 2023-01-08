@@ -96,6 +96,7 @@ import           Filesystem.Path.CurrentOS (encodeString)
 import           Prelude hiding (FilePath)
 import           Text.XML.Stream.Parse hiding (parseText)
 import           Text.CSS.Parse (parseBlocks)
+import           Control.Exception ( SomeException, catch )
 
 import           Debug.Trace
 --------------------------------------------------------------------------------------
@@ -119,12 +120,18 @@ import           Debug.Trace
 --      Right diagram -> mainWith $ diagram
 -- @
 --
-readSVGFile :: (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Renderable (DImage n Embedded) b, -- TODO upper example
-                Typeable b, Typeable n, Show n, Read n, n ~ Place, Renderable (TT.Text n) b) 
+readSVGFile :: (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Renderable (DImage n Embedded) b,
+                Typeable b, Typeable n, Show n, Read n, n ~ Place, Renderable (TT.Text n) b)
              => Filesystem.Path.FilePath -> IO (Either String (Diagram b))
-readSVGFile fp = if (extension fp) /= (Just "svg") then return $ Left "Not a svg file" else -- TODO All exceptions into left values
-  runResourceT $ do tree <- parseFile def (encodeString fp) $$ force "error in parseSVG" parseSVG
-                    return (Right (diagram tree))
+readSVGFile fp = if (extension fp) == (Just "svg")
+    then catchAny (runResourceT $ do
+           tree <- parseFile def (encodeString fp) $$ force "error in parseSVG: " parseSVG
+           pure $ Right $ diagram tree)
+         $ \e -> pure $ Left $ "error in parseFile: " <> show e
+     else pure $ Left "Not a svg file"
+  where
+    catchAny :: IO a -> (SomeException -> IO a) -> IO a
+    catchAny = Control.Exception.catch
 
 diagram :: (RealFloat n, V b ~ V2, n ~ N b, Typeable n, Read n, n ~ Place) => Tag b n -> Diagram b
 diagram tr = (insertRefs ((nmap,cssmap,expandedGradMap),(0,0,100,100)) tr) # scaleY (-1) # initialStyles
