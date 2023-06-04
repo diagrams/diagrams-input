@@ -42,7 +42,6 @@ Support of [SVG 1.1](http://www.w3.org/TR/SVG/):
 ### TODO
 - [ ] fill = "none" => path open
 - [ ] Scale viewbox to width and height
-- [ ] Bug in arc command
 - [ ] marker tag
 - [ ] Transform exceptions into Left values in Image.hs (if monad transformers and conduit is easy for you please help me)
 - [ ] inherit-attribute

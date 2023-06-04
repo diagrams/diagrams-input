@@ -18,7 +18,6 @@ module Diagrams.SVG.ReadSVG
     (
     -- * Main functions
       readSVGFile
-    , readSVGLBS
     , preserveAspectRatio
     , nodes
     , insertRefs
@@ -68,7 +67,6 @@ import           Data.Either.Combinators
 import qualified Data.Attoparsec.Text as AT
 import qualified Data.Attoparsec.ByteString as ABS
 import qualified Data.ByteString as B
-import qualified Data.ByteString.Lazy as LB
 import qualified Data.ByteString.Base64 as Base64
 import           Data.Conduit
 import qualified Data.Conduit.List as CL
@@ -127,19 +125,13 @@ readSVGFile :: (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Render
              => Filesystem.Path.FilePath -> IO (Either String (Diagram b))
 readSVGFile fp = if (extension fp) == (Just "svg")
     then catchAny (runResourceT $ do
-           tree <- parseFile def (encodeString fp) $$ force "error in parseSVG: " parseSVG
+           tree <- runConduit $ parseFile def (encodeString fp) .| force "error in parseSVG: " parseSVG
            pure $ Right $ diagram tree)
          $ \e -> pure $ Left $ "error in parseFile: " <> show e
      else pure $ Left "Not a svg file"
   where
     catchAny :: IO a -> (SomeException -> IO a) -> IO a
     catchAny = Control.Exception.catch
-
--- | Read SVG from a Lazy ByteString and turn it into a diagram.
-readSVGLBS :: (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Renderable (DImage n Embedded) b,
-                Typeable b, Typeable n, Show n, Read n, n ~ Place, Renderable (TT.Text n) b, MonadThrow m)
-             => LB.ByteString -> m (Diagram b)
-readSVGLBS bs = runConduit $ diagram <$> (parseLBS def bs .| force "error in parseSVG" parseSVG)
 
 diagram :: (RealFloat n, V b ~ V2, n ~ N b, Typeable n, Read n, n ~ Place) => Tag b n -> Diagram b
 diagram tr = (insertRefs ((nmap,cssmap,expandedGradMap),(0,0,100,100)) tr) # scaleY (-1) # initialStyles
@@ -182,8 +174,8 @@ instance (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Typeable n, 
 
 -- | Parse \<svg\>, see <http://www.w3.org/TR/SVG/struct.html#SVGElement>
 parseSVG :: (MonadThrow m, InputConstraints b n, Renderable (TT.Text n) b, Read n) 
-          => Sink Event m (Maybe (Tag b n))
-parseSVG = tagName "{http://www.w3.org/2000/svg}svg" svgAttrs $
+          => ConduitT Event Void m (Maybe (Tag b n))
+parseSVG = tag' (Text.XML.Stream.Parse.anyOf ["svg", "{http://www.w3.org/2000/svg}svg"]) svgAttrs $
    \(cpa,ca,gea,pa,class_,style,ext,x,y,w,h,vb,ar,zp,ver,baseprof,cScripT,cStyleT,xmlns,xml) ->
    do gs <- many gContent
       let st hmaps = (parseStyles style hmaps) ++ -- parse the style attribute (style="stop-color:#000000;stop-opacity:0.8")
@@ -200,7 +192,7 @@ parseSVG = tagName "{http://www.w3.org/2000/svg}svg" svgAttrs $
                             (reverse gs)
 
 svgContent :: (MonadThrow m, InputConstraints b n, Renderable (TT.Text n) b, Read n) 
-            => Consumer Event m (Maybe (Tag b n))
+            => ConduitT Event Void m (Maybe (Tag b n))
 svgContent = choose -- the likely most common are checked first
      [parseG, parsePath, parseCircle, parseRect, parseEllipse, parseLine, parsePolyLine, parsePolygon,
       parseDefs, parseSymbol, parseUse, -- structural elements
@@ -211,7 +203,7 @@ svgContent = choose -- the likely most common are checked first
 ---------------------------------------------------------------------------
 -- | Parse \<g\>, see <http://www.w3.org/TR/SVG/struct.html#GElement>
 parseG :: (MonadThrow m, InputConstraints b n, Renderable (TT.Text n) b, Read n) 
-        => Consumer Event m (Maybe (Tag b n))
+        => forall o. ConduitT Event o m (Maybe (Tag b n))
 parseG = tagName "{http://www.w3.org/2000/svg}g" gAttrs
    $ \(cpa,ca,gea,pa,class_,style,ext,tr) ->
    do insideGs <- many gContent
@@ -226,7 +218,7 @@ parseG = tagName "{http://www.w3.org/2000/svg}g" gAttrs
                             (reverse insideGs)
 
 gContent :: (MonadThrow m, InputConstraints b n, Show n, Read n, Renderable (TT.Text n) b) 
-          => Consumer Event m (Maybe (Tag b n))
+          => forall o. ConduitT Event o m (Maybe (Tag b n))
 gContent = choose -- the likely most common are checked first
      [parsePath, parseG, parseRect, parseCircle, parseEllipse, parseLine, parsePolyLine, parsePolygon,
       parseUse, parseSymbol, parseStyle, parseDefs, -- structural elements
@@ -238,7 +230,7 @@ gContent = choose -- the likely most common are checked first
 ---------------------------------------------------------------------------
 -- | Parse \<defs\>, see <http://www.w3.org/TR/SVG/struct.html#DefsElement>
 parseDefs :: (MonadThrow m, InputConstraints b n, Renderable (TT.Text n) b, Read n) 
-           => Consumer Event m (Maybe (Tag b n))
+           => forall o. ConduitT Event o m (Maybe (Tag b n))
 parseDefs = tagName "{http://www.w3.org/2000/svg}defs" gAttrs $
    \(cpa,ca,gea,pa,class_,style,ext,tr) ->
    do insideDefs <- many gContent
@@ -261,7 +253,7 @@ parseDefs = tagName "{http://www.w3.org/2000/svg}defs" gAttrs $
 --    .fil1 {fill:#3A73B8}
 --   ]]>
 --  </style>
-parseStyle :: (MonadThrow m, RealFloat n) => Consumer Event m (Maybe (Tag b n))
+parseStyle :: (MonadThrow m, RealFloat n) => forall o. ConduitT Event o m (Maybe (Tag b n))
 parseStyle = tagName "{http://www.w3.org/2000/svg}style" sAttrs $
    \(ca,type_,media,title) ->
    do insideStyle <- content
@@ -274,7 +266,7 @@ parseStyle = tagName "{http://www.w3.org/2000/svg}style" sAttrs $
 -----------------------------------------------------------------------------------
 -- | Parse \<symbol\>, see <http://www.w3.org/TR/SVG/struct.html#SymbolElement>
 parseSymbol :: (MonadThrow m, InputConstraints b n, Renderable (TT.Text n) b, Read n) 
-             => Consumer Event m (Maybe (Tag b n))
+             => forall o. ConduitT Event o m (Maybe (Tag b n))
 parseSymbol = tagName "{http://www.w3.org/2000/svg}symbol" symbolAttrs $
    \(ca,gea,pa,class_,style,ext,ar,viewbox) ->
    do insideSym <- many gContent
@@ -290,7 +282,7 @@ parseSymbol = tagName "{http://www.w3.org/2000/svg}symbol" symbolAttrs $
 
 -----------------------------------------------------------------------------------
 -- | Parse \<use\>, see <http://www.w3.org/TR/SVG/struct.html#UseElement>
-parseUse :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Typeable n) => Consumer Event m (Maybe (Tag b n))
+parseUse :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Typeable n) => forall o. ConduitT Event o m (Maybe (Tag b n))
 parseUse = tagName "{http://www.w3.org/2000/svg}use" useAttrs
    $ \(ca,cpa,gea,pa,xlink,class_,style,ext,tr,x,y,w,h) ->
    do -- insideUse <- many useContent
@@ -308,23 +300,23 @@ parseUse = tagName "{http://www.w3.org/2000/svg}use" useAttrs
                                                                  p (vbH, miny) 0 y))) .
                                                  (applyTr (parseTr tr)) . (applyStyleSVG st maps)
 
-useContent :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => Consumer Event m (Maybe (Tag b n))
+useContent :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => forall o. ConduitT Event o m (Maybe (Tag b n))
 useContent = choose [parseDesc,parseTitle] -- descriptive elements
 
 --------------------------------------------------------------------------------------
 -- | Parse \<switch\>, see <http://www.w3.org/TR/SVG/struct.html#SwitchElement>
-parseSwitch :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => Consumer Event m (Maybe (Tag b n))
+parseSwitch :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => forall o. ConduitT Event o m (Maybe (Tag b n))
 parseSwitch = tagName "{http://www.w3.org/2000/svg}switch" switchAttrs
    $ \(cpa,ca,gea,pa,class_,style,ext,tr) ->
    do -- insideSwitch <- many switchContent
       return $ Leaf (id1 ca) mempty mempty
 
--- switchContent :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => Consumer Event m (Maybe (Tag b n))
+-- switchContent :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => forall o. ConduitT Event o m (Maybe (Tag b n))
 switchContent = choose [parsePath, parseRect, parseCircle, parseEllipse, parseLine, parsePolyLine, parsePolygon]
 
 -----------------------------------------------------------------------------------
 -- | Parse \<rect\>,  see <http://www.w3.org/TR/SVG11/shapes.html#RectElement>
-parseRect :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Tag b n))
+parseRect :: (MonadThrow m, InputConstraints b n) => forall o. ConduitT Event o m (Maybe (Tag b n))
 parseRect = tagName "{http://www.w3.org/2000/svg}rect" rectAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,ar,tr,x,y,w,h,rx,ry) -> do
     let st hmaps = (parseStyles style hmaps) ++
@@ -342,7 +334,7 @@ parseRect = tagName "{http://www.w3.org/2000/svg}rect" rectAttrs $
 
 ---------------------------------------------------------------------------------------------------
 -- | Parse \<circle\>,  see <http://www.w3.org/TR/SVG11/shapes.html#CircleElement>
-parseCircle :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Tag b n))
+parseCircle :: (MonadThrow m, InputConstraints b n) => forall o. ConduitT Event o m (Maybe (Tag b n))
 parseCircle = tagName "{http://www.w3.org/2000/svg}circle" circleAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,r,cx,cy) -> do
     let -- st :: (RealFloat n, RealFloat a, Read a) => (HashMaps b n, ViewBox n) -> [SVGStyle n a]
@@ -357,7 +349,7 @@ parseCircle = tagName "{http://www.w3.org/2000/svg}circle" circleAttrs $
 
 ---------------------------------------------------------------------------------------------------
 -- | Parse \<ellipse\>,  see <http://www.w3.org/TR/SVG11/shapes.html#EllipseElement>
-parseEllipse :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Tag b n))
+parseEllipse :: (MonadThrow m, InputConstraints b n) => forall o. ConduitT Event o m (Maybe (Tag b n))
 parseEllipse = tagName "{http://www.w3.org/2000/svg}ellipse" ellipseAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,rx,ry,cx,cy) -> do
     let st hmaps = (parseStyles style hmaps) ++
@@ -371,7 +363,7 @@ parseEllipse = tagName "{http://www.w3.org/2000/svg}ellipse" ellipseAttrs $
 
 ---------------------------------------------------------------------------------------------------
 -- | Parse \<line\>,  see <http://www.w3.org/TR/SVG11/shapes.html#LineElement>
-parseLine :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Tag b n))
+parseLine :: (MonadThrow m, InputConstraints b n) => forall o. ConduitT Event o m (Maybe (Tag b n))
 parseLine = tagName "{http://www.w3.org/2000/svg}line" lineAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,x1,y1,x2,y2) -> do
     let st hmaps = (parseStyles style hmaps) ++
@@ -387,7 +379,7 @@ parseLine = tagName "{http://www.w3.org/2000/svg}line" lineAttrs $
 
 ---------------------------------------------------------------------------------------------------
 -- | Parse \<polyline\>,  see <http://www.w3.org/TR/SVG11/shapes.html#PolylineElement>
-parsePolyLine :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Tag b n))
+parsePolyLine :: (MonadThrow m, InputConstraints b n) => forall o. ConduitT Event o m (Maybe (Tag b n))
 parsePolyLine = tagName "{http://www.w3.org/2000/svg}polyline" polygonAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,points) -> do
     let st hmaps = (parseStyles style hmaps) ++
@@ -405,7 +397,7 @@ parsePolyLine = tagName "{http://www.w3.org/2000/svg}polyline" polygonAttrs $
 
 --------------------------------------------------------------------------------------------------
 -- | Parse \<polygon\>,  see <http://www.w3.org/TR/SVG11/shapes.html#PolygonElement>
-parsePolygon :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Tag b n))
+parsePolygon :: (MonadThrow m, InputConstraints b n) => forall o. ConduitT Event o m (Maybe (Tag b n))
 parsePolygon = tagName "{http://www.w3.org/2000/svg}polygon" polygonAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,points) -> do
     let st hmaps = (parseStyles style hmaps) ++
@@ -423,7 +415,7 @@ parsePolygon = tagName "{http://www.w3.org/2000/svg}polygon" polygonAttrs $
 
 --------------------------------------------------------------------------------------------------
 -- | Parse \<path\>,  see <http://www.w3.org/TR/SVG11/paths.html#PathElement>
-parsePath :: (MonadThrow m, InputConstraints b n, Show n) => Consumer Event m (Maybe (Tag b n))
+parsePath :: (MonadThrow m, InputConstraints b n, Show n) => forall o. ConduitT Event o m (Maybe (Tag b n))
 parsePath = tagName "{http://www.w3.org/2000/svg}path" pathAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,d,pathLength) -> do
     let st hmaps = (parseStyles style hmaps) ++
@@ -437,7 +429,7 @@ parsePath = tagName "{http://www.w3.org/2000/svg}path" pathAttrs $
 -------------------------------------------------------------------------------------------------
 -- | Parse \<clipPath\>, see <http://www.w3.org/TR/SVG/masking.html#ClipPathElement>
 parseClipPath :: (MonadThrow m, InputConstraints b n, Show n, Read n, Renderable (TT.Text n) b) 
-               => Consumer Event m (Maybe (Tag b n))
+               => forall o. ConduitT Event o m (Maybe (Tag b n))
 parseClipPath = tagName "{http://www.w3.org/2000/svg}clipPath" clipPathAttrs $
   \(cpa,ca,pa,class_,style,ext,ar,viewbox) -> do
     insideClipPath <- many clipPathContent
@@ -452,7 +444,7 @@ parseClipPath = tagName "{http://www.w3.org/2000/svg}clipPath" clipPathAttrs $
                      (reverse insideClipPath)
 
 clipPathContent :: (MonadThrow m, InputConstraints b n, Show n, Read n, Renderable (TT.Text n) b) 
-                 => Consumer Event m (Maybe (Tag b n))
+                 => forall o. ConduitT Event o m (Maybe (Tag b n))
 clipPathContent = choose [parseRect, parseCircle, parseEllipse, parseLine, parsePolyLine, parsePath,
                           parsePolygon, parseText, parseUse]
 
@@ -460,7 +452,7 @@ clipPathContent = choose [parseRect, parseCircle, parseEllipse, parseLine, parse
 -- | Parse \<image\>, see <http://www.w3.org/TR/SVG/struct.html#ImageElement>
 -- <image width="28" xlink:href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAADCAYAAACAjW/aAAAABmJLR0QA/wD/AP+gvaeTAAAAB3RJTUUH2AkMDx4ErQ9V0AAAAClJREFUGJVjYMACGhoa/jMwMPyH0kQDYvQxYpNsaGjAyibCQrL00dSHACypIHXUNrh3AAAAAElFTkSuQmCC" height="3"/>
 parseImage :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Renderable (DImage (N b) Embedded) b,
-              Typeable b, Typeable n) => Consumer Event m (Maybe (Tag b n))
+              Typeable b, Typeable n) => forall o. ConduitT Event o m (Maybe (Tag b n))
 parseImage = tagName "{http://www.w3.org/2000/svg}image" imageAttrs $
   \(ca,cpa,gea,xlink,pa,class_,style,ext,ar,tr,x,y,w,h) ->
   do return $ Leaf (id1 ca) mempty (\(_,(minx,miny,vbW,vbH)) -> (dataUriToImage (xlinkHref xlink) (p (minx,vbW) 0 w) (p (miny,vbH) 0 h))
@@ -506,7 +498,7 @@ im imageType base64data = case Base64.decode base64data of
 -------------------------------------------------------------------------------------------------
 -- | Parse \<text\>, see <http://www.w3.org/TR/SVG/text.html#TextElement>
 parseText :: (MonadThrow m, InputConstraints b n, Read n, RealFloat n, Renderable (TT.Text n) b)
-            => Consumer Event m (Maybe (Tag b n))
+            => forall o. ConduitT Event o m (Maybe (Tag b n))
 parseText = tagName "{http://www.w3.org/2000/svg}text" textAttrs $
   \(cpa,ca,gea,pa,class_,style,ext,tr,la,x,y,dx,dy,rot,textlen) ->
     do let st hmaps = (parseStyles style hmaps) ++
@@ -644,7 +636,7 @@ pref Nothing Nothing  = Nothing
 -- | Parse \<linearGradient\>, see <http://www.w3.org/TR/SVG/pservers.html#LinearGradientElement>
 -- example: <linearGradient id="SVGID_2_" gradientUnits="userSpaceOnUse" x1="68.2461" y1="197.6797"
 --           x2="52.6936" y2="237.5337" gradientTransform="matrix(1 0 0 -1 -22.5352 286.4424)">
-parseLinearGradient :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => Consumer Event m (Maybe (Tag b n))
+parseLinearGradient :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => forall o. ConduitT Event o m (Maybe (Tag b n))
 parseLinearGradient = tagName "{http://www.w3.org/2000/svg}linearGradient" linearGradAttrs $
   \(ca,pa,xlink,class_,style,ext,x1,y1,x2,y2,gradientUnits,gradientTransform,spreadMethod) -> -- TODO gradientUnits
   do gs <- many gradientContent
@@ -668,7 +660,7 @@ gradientContent = choose [parseStop, parseMidPointStop] -- parseSet,
    --   parseDesc, parseMetaData, parseTitle] -- descriptive Elements (rarely used here, so tested at the end)
 
 -- | Parse \<radialGradient\>, see <http://www.w3.org/TR/SVG/pservers.html#RadialGradientElement>
-parseRadialGradient :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => Consumer Event m (Maybe (Tag b n))
+parseRadialGradient :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => forall o. ConduitT Event o m (Maybe (Tag b n))
 parseRadialGradient = tagName "{http://www.w3.org/2000/svg}radialGradient" radialGradAttrs $ -- TODO gradientUnits
   \(ca,pa,xlink,class_,style,ext,cx,cy,r,fx,fy,gradientUnits,gradientTransform,spreadMethod) -> 
   do gs <- many gradientContent
@@ -739,7 +731,7 @@ isOpacity _           = False
 ----------------------------------------------------------------------------------------------------
 
 parseFont :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Renderable (DImage (N b) Embedded) b, Renderable (Path V2 n) b,
-              Typeable b, Typeable n, Show n, Read n, Renderable (TT.Text n) b) => Consumer Event m (Maybe (Tag b n))
+              Typeable b, Typeable n, Show n, Read n, Renderable (TT.Text n) b) => forall o. ConduitT Event o m (Maybe (Tag b n))
 parseFont = tagName "{http://www.w3.org/2000/svg}font" fontAttrs $
   \(ca,pa,class_,style,ext,hOriginX,hOriginY,hAdvX,vOriginX,vOriginY,vAdvY) ->
   do gs <- many fontContent
@@ -763,13 +755,13 @@ parseFont = tagName "{http://www.w3.org/2000/svg}font" fontAttrs $
         toSvgGlyph (GG (Glyph glyphId g d horizAdvX _ _ _ (Just unicode) glyphName o a l)) = (unicode,(glyphName,horizAdvX,d))
 
 fontContent :: (MonadThrow m, InputConstraints b n, Read n, Show n, Renderable (TT.Text n) b) 
-             => Consumer Event m (Maybe (FontContent b n))
+             => forall o. ConduitT Event o m (Maybe (FontContent b n))
 fontContent = choose -- the likely most common are checked first
      [parseGlyph, parseHKern, parseFontFace, parseMissingGlyph, parseVKern]
 
 
 parseFontFace :: (MonadThrow m, V b ~ V2, N b ~ n, Read n, RealFloat n, Renderable (DImage (N b) Embedded) b,
-              Typeable b, Typeable n) => Consumer Event m (Maybe (FontContent b n))
+              Typeable b, Typeable n) => forall o. ConduitT Event o m (Maybe (FontContent b n))
 parseFontFace = tagName "{http://www.w3.org/2000/svg}font-face" fontFaceAttrs $
   \(ca,fontFamily,fontStyle,fontVariant,fontWeight,fontStretch,fontSize,unicodeRange,unitsPerEm,panose1,
     stemv,stemh,slope,capHeight,xHeight,accentHeight,ascent,descent,widths,bbox,ideographic,alphabetic,mathematical,
@@ -782,7 +774,7 @@ parseFontFace = tagName "{http://www.w3.org/2000/svg}font-face" fontFaceAttrs $
 
 
 parseMissingGlyph :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Read n, Renderable (DImage (N b) Embedded) b,
-              Typeable b, Typeable n) => Consumer Event m (Maybe (FontContent b n))
+              Typeable b, Typeable n) => forall o. ConduitT Event o m (Maybe (FontContent b n))
 parseMissingGlyph = tagName "{http://www.w3.org/2000/svg}missing-glyph" missingGlyphAttrs $
   \(ca,pa,class_,style,d,horizAdvX,vertOriginX,vertOriginY,vertAdvY) ->
   do return $ GG $ Glyph (id1 ca) (Leaf (id1 ca) mempty mempty) Nothing
@@ -792,7 +784,7 @@ parseMissingGlyph = tagName "{http://www.w3.org/2000/svg}missing-glyph" missingG
 
 parseGlyph :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Read n, Renderable (DImage (N b) Embedded) b,
               Renderable (Path V2 n) b, Show n, Typeable b, Typeable n, Renderable (TT.Text n) b) 
-           => Consumer Event m (Maybe (FontContent b n))
+           => forall o. ConduitT Event o m (Maybe (FontContent b n))
 parseGlyph = tagName "{http://www.w3.org/2000/svg}glyph" glyphAttrs $
   \(ca,pa,class_,style,d,horizAdvX,vertOriginX,vertOriginY,vertAdvY,unicode,glyphName,orientation,arabicForm,lang) ->
   do gs <- many gContent
@@ -803,12 +795,12 @@ parseGlyph = tagName "{http://www.w3.org/2000/svg}glyph" glyphAttrs $
 
 getN = maybe 0 (read . T.unpack)
 
-parseHKern :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Read n, Typeable b, Typeable n) => Consumer Event m (Maybe (FontContent b n))
+parseHKern :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Read n, Typeable b, Typeable n) => forall o. ConduitT Event o m (Maybe (FontContent b n))
 parseHKern = tagName "{http://www.w3.org/2000/svg}hkern" kernAttrs $
   \(ca,u1,g1,u2,g2,k) ->
   do return $ KK $ Kern HKern (charList u1) (charList g1) (charList u2) (charList g2) (getN k)
 
-parseVKern :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Read n, Typeable b, Typeable n) => Consumer Event m (Maybe (FontContent b n))
+parseVKern :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n, Read n, Typeable b, Typeable n) => forall o. ConduitT Event o m (Maybe (FontContent b n))
 parseVKern = tagName "{http://www.w3.org/2000/svg}vkern" kernAttrs $
   \(ca,u1,g1,u2,g2,k) ->
   do return $ KK $ Kern VKern (charList u1) (charList g1) (charList u2) (charList g2) (getN k)
@@ -820,7 +812,7 @@ charList str = maybe [] (T.splitOn ",") str
 -- descriptive elements
 ------------------------------------------------------o	----------------------------------
 -- | Parse \<desc\>, see <http://www.w3.org/TR/SVG/struct.html#DescriptionAndTitleElements>
--- parseDesc :: (MonadThrow m, Metric (V b), RealFloat (N b)) => Consumer Event m (Maybe (Tag b n))
+-- parseDesc :: (MonadThrow m, Metric (V b), RealFloat (N b)) => forall o. ConduitT Event o m (Maybe (Tag b n))
 parseDesc = tagName "{http://www.w3.org/2000/svg}desc" descAttrs
    $ \(ca,class_,style) ->
    do desc <- content
@@ -832,7 +824,7 @@ parseTitle = tagName "{http://www.w3.org/2000/svg}title" descAttrs
    do title <- content
       return $ Leaf (id1 ca) mempty mempty
 
-skipArbitraryTag :: (MonadThrow m, InputConstraints b n, Renderable (TT.Text n) b, Read n) => Consumer Event m (Maybe (Tag b n))
+skipArbitraryTag :: (MonadThrow m, InputConstraints b n, Renderable (TT.Text n) b, Read n) => forall o. ConduitT Event o m (Maybe (Tag b n))
 skipArbitraryTag = do t <- ignoreAnyTreeContent
                       if isJust t then return (Just $ Leaf (Just "") mempty mempty)
                                   else return Nothing
@@ -857,22 +849,22 @@ skipArbitraryTag = do t <- ignoreAnyTreeContent
 --
 {-  Maybe we implement it one day
 
-parseMetaData :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => Consumer Event m (Maybe (Tag b n))
+parseMetaData :: (MonadThrow m, V b ~ V2, N b ~ n, RealFloat n) => forall o. ConduitT Event o m (Maybe (Tag b n))
 parseMetaData = tagName "{http://www.w3.org/2000/svg}metadata" ignoreAttrs
    $ \_ ->
    do -- meta <- many metaContent
       return $ Leaf Nothing mempty mempty
 
--- metaContent :: (MonadThrow m, Metric (V b), RealFloat (N b)) => Consumer Event m (Maybe (Tag b n))
+-- metaContent :: (MonadThrow m, Metric (V b), RealFloat (N b)) => forall o. ConduitT Event o m (Maybe (Tag b n))
 metaContent = choose [parseRDF] -- extend if needed
 
--- parseRDF :: (MonadThrow m, Metric (V b), RealFloat (N b)) => Consumer Event m (Maybe (Tag b n))
+-- parseRDF :: (MonadThrow m, Metric (V b), RealFloat (N b)) => forall o. ConduitT Event o m (Maybe (Tag b n))
 parseRDF = tagName "{http://www.w3.org/1999/02/22-rdf-syntax-ns#}RDF" ignoreAttrs
           $ \_ ->
           do -- c <- parseWork
              return $ Leaf Nothing mempty mempty
 
--- parseWork :: (MonadThrow m, Metric (V b), RealFloat (N b)) => Consumer Event m (Maybe (Tag b n))
+-- parseWork :: (MonadThrow m, Metric (V b), RealFloat (N b)) => forall o. ConduitT Event o m (Maybe (Tag b n))
 parseWork = tagName "{http://creativecommons.org/ns#}Work" ignoreAttrs
    $ \_ ->
    do -- c <- many workContent
@@ -893,7 +885,7 @@ parsePublisher = tagName "{http://purl.org/dc/elements/1.1/}publisher" ignoreAtt
 parseSubject = tagName "{http://purl.org/dc/elements/1.1/}subject" ignoreAttrs
    $ \_ -> do { c <- parseBag ; return $ Leaf Nothing mempty mempty }
 
--- parseBag :: (MonadThrow m, Metric (V b), Ord (N b), Floating (N b)) => Consumer Event m (Maybe (Tag b n))
+-- parseBag :: (MonadThrow m, Metric (V b), Ord (N b), Floating (N b)) => forall o. ConduitT Event o m (Maybe (Tag b n))
 parseBag = tagName "{http://www.w3.org/1999/02/22-rdf-syntax-ns#}Bag" ignoreAttrs
    $ \_ -> do { c <- parseList ; return $ Leaf Nothing mempty mempty }
 
@@ -959,13 +951,13 @@ parsePathEffect = tagName "{http://www.inkscape.org/namespaces/inkscape}path-eff
 -- sceletons
 
 -- | Parse \<pattern\>, see <http://www.w3.org/TR/SVG/pservers.html#PatternElement>
-parsePattern :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Tag b n))
+parsePattern :: (MonadThrow m, InputConstraints b n) => forall o. ConduitT Event o m (Maybe (Tag b n))
 parsePattern = tagName "{http://www.w3.org/2000/svg}pattern" patternAttrs $
   \(cpa,ca,pa,class_,style,ext,view,ar,x,y,w,h,pUnits,pCUnits,pTrans) ->
   do c <- content -- insidePattern <- many patternContent
      return $ Leaf (Just "") mempty mempty
 
-patternContent :: (MonadThrow m, InputConstraints b n) => Consumer Event m (Maybe (Tag b n))
+patternContent :: (MonadThrow m, InputConstraints b n) => forall o. ConduitT Event o m (Maybe (Tag b n))
 patternContent = choose [parseImage]
 
 -- | Parse \<filter\>, see <http://www.w3.org/TR/SVG/filters.html#FilterElement>

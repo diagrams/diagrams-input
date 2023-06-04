@@ -171,15 +171,6 @@ parseToDouble l | isJust l = either (const Nothing) (Just . fromRational . toRat
                 | otherwise = Nothing
 pp = parseDouble . pack
 
-myDouble = AT.choice [dotDouble, double]
-
-dotDouble =
-   do AT.skipSpace
-      AT.char '.'
-      frac <- AT.decimal
-      let denominator = fromIntegral (10^(length $ digits 10 frac))
-      return ((fromIntegral frac) / denominator)
-
 parsePoints :: RealFloat n => Text -> [(n, n)]
 parsePoints t = either (const []) id (AT.parseOnly (many' parsePoint) t)
 

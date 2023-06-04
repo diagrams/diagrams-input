@@ -19,6 +19,7 @@ import           Control.Monad (msum)
 import           Codec.Picture
 import           Codec.Picture.Types  (dynamicMap)
 
+import           Data.Either (isRight)
 import           Data.Semigroup
 import           Data.Typeable        (Typeable)
 
@@ -33,23 +34,21 @@ import           Filesystem.Path.CurrentOS (decodeString)
 
 -- | Load 2d formats given by a filepath and embed them
 loadImageEmbedded :: (InputConstraints b n, Renderable (TT.Text n) b, Read n, n ~ Place) 
-                   => String -> IO (Either String (QDiagram b V2 n Any))
+                   => FilePath -> IO (Either String (QDiagram b V2 n Any))
 loadImageEmbedded path = do
   dImg <- readImage path
   svgImg <- readSVGFile (decodeString path)
-  return $ msum  [ svgImg,
-                   fmap (image.rasterImage) dImg ] -- skip "Left"s and use the first "Right" image
-  where
-    rasterImage img = DImage (ImageRaster img) (dynamicMap imageWidth img) (dynamicMap imageHeight img) mempty
+  return $ if isRight svgImg then svgImg else fmap (image.rasterImage) dImg
+ where
+   rasterImage img = DImage (ImageRaster img) (dynamicMap imageWidth img) (dynamicMap imageHeight img) mempty
 
 -- | Load 2d formats given by a filepath and make a reference
 loadImageExternal :: (InputConstraints b n, Renderable (DImage n External) b) 
                    => FilePath -> IO (Either String (QDiagram b V2 n Any))
 loadImageExternal path = do
+  --  svgImg <- readSVGFile (decodeString path)
   dImg <- readImage path
---  svgImg <- readSVGFile path
-  return $ msum [ fmap (image.rasterPath) dImg ]
---                svgImg ] -- skip "Left"s and use the first "Right" image
-  where
-    rasterPath img = DImage (ImageRef path) (dynamicMap imageWidth img) (dynamicMap imageHeight img) mempty
+  return $ fmap (image.rasterPath) dImg
+ where
+   rasterPath img = DImage (ImageRef path) (dynamicMap imageWidth img) (dynamicMap imageHeight img) mempty
 

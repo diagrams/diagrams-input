@@ -13,6 +13,7 @@ module Diagrams.SVG.Path
     , outline
     , nextSegment
     , svgArc
+    , myDouble
     -- * Parsing (Generating Path Commands)
     , PathCommand(..)
     , parsePathCommand
@@ -23,19 +24,20 @@ where
 import Data.Attoparsec.Combinator
 import Data.Attoparsec.Text
 import qualified Data.Attoparsec.Text as AT
-import Data.Char (isAlpha, isHexDigit, digitToInt)
+import Data.Char (digitToInt, isAlpha, isHexDigit)
 import Data.Colour.Names (readColourName)
 import Data.Colour.SRGB
-import qualified Data.List.Split as S
+import Data.Digits (digits)
 import Data.List (foldl')
-import Data.Maybe (fromMaybe, fromJust, isJust, isNothing, maybeToList, catMaybes)
+import qualified Data.List.Split as S
+import Data.Maybe (catMaybes, fromJust, fromMaybe, isJust, isNothing, maybeToList)
+import Data.Text (Text (..), empty, pack, unpack)
 import qualified Data.Text as T
-import Data.Text(Text(..), pack, unpack, empty)
 import Diagrams.Attributes
 import Diagrams.Path
+import Diagrams.Prelude
 import Diagrams.Segment
 import Diagrams.TwoD.Types
-import Diagrams.Prelude
 
 data AbsRel = Abs | Rel deriving Show
 data PathCommand n =
@@ -91,9 +93,18 @@ withOptional parser a = do { AT.skipSpace;
                              AT.choice [ do { AT.char a; b <- parser; return b},
                                          do {            b <- parser; return b} ] }
 
-doubleWithOptional a = do { d <- double `withOptional` a ; return (fromRational $ toRational d) }
+myDouble = AT.choice [dotDouble, double]
 
-spaceDouble = do { AT.skipSpace; d <- double; return (fromRational $ toRational d) }
+dotDouble =
+   do AT.skipSpace
+      AT.char '.'
+      frac <- AT.decimal
+      let denominator = fromIntegral (10^(length $ digits 10 frac))
+      return ((fromIntegral frac) / denominator)
+
+doubleWithOptional a = do { d <- myDouble `withOptional` a ; return (fromRational $ toRational d) }
+
+spaceDouble = do { AT.skipSpace; d <- myDouble; return (fromRational $ toRational d) }
 
 tuple2 = do { a <- spaceDouble; b <- doubleWithOptional ','; return (a, b) }
 
@@ -212,22 +223,22 @@ nextSegment (_, (x0,y0), O trail) (Q Rel (x1,y1,x,y)) = ((x1+x0, y1+y0), (x+x0, 
 nextSegment ((cx,cy), (x0,y0), O trail) (T Abs (x,y)) = ((2*x0-cx, 2*y0-cy ), (x, y), O $ trail ++ [bez3 (x0-cx, y0-cy) (x-x0, y-y0) (x-x0, y-y0)])
 nextSegment ((cx,cy), (x0,y0), O trail) (T Rel (x,y)) = ((2*x0-cx, 2*y0-cy),  (x, y), O $ trail ++ [bez3 (x0-cx, y0-cy) (x, y) (x, y)])
 
-nextSegment (_, (x0,y0), O trail) (A Abs (rx,ry,xAxisRot,fl0,fl1,x,y) ) = (nul, nul, O $ trail ++ [svgArc (rx,ry) xAxisRot fl0 fl1 (x, y)])
-nextSegment (_, (x0,y0), O trail) (A Rel (rx,ry,xAxisRot,fl0,fl1,x,y) ) = (nul, nul, O $ trail ++ [svgArc (rx,ry) xAxisRot fl0 fl1 (x, y)])
-
-nul = (0,0)
+nextSegment (_, (x0,y0), O trail) (A Abs (rx,ry,xAxisRot,fl0,fl1,x,y) ) = ((x, y), (x, y), O $ trail ++ [svgArc (rx,ry) xAxisRot fl0 fl1 (x-x0, y-y0)])
+nextSegment (_, (x0,y0), O trail) (A Rel (rx,ry,xAxisRot,fl0,fl1,x,y) ) = ((x+x0, y+y0), (x+x0, y+y0), O $ trail ++ [svgArc (rx,ry) xAxisRot fl0 fl1 (x, y)])
 
 straight' = lineFromSegments . (:[]) . straight . r2
 
 bez3 point1 point2 point3 = lineFromSegments [bezier3 (r2 point1) (r2 point2) (r2 point3)]
 
 -- | The arc command: see <http://www.w3.org/TR/SVG11/implnote.html#ArcImplementationNotes>
+-- Conversion from endpoint to center parametrization, see B.2.4
 -- To Do: scale if rx,ry,xAxisRot are such that there is no solution
 svgArc :: (RealFloat n, Show n) => (n, n) -> n -> n -> n -> (n,n) -> Trail' Line V2 n
 svgArc (rxx, ryy) xAxisRot largeArcFlag sweepFlag (x2, y2)
      | x2 == 0 && y2 == 0 = emptyLine -- spec F6.2
      | rx == 0 || ry == 0 = straight' (x2,y2) -- spec F6.2
      | otherwise = -- Debug.Trace.trace (show (dtheta) ++ show dir1) $
+-- https://hackage.haskell.org/package/diagrams-lib-1.4.6/docs/Diagrams-TwoD-Arc.html
                    unLoc (arc' 1 dir1 (dtheta @@ rad) # scaleY ry # scaleX rx # rotate (phi @@ rad))
   where rx | rxx < 0   = -rxx  -- spec F6.2
            | otherwise =  rxx
@@ -252,7 +263,7 @@ svgArc (rxx, ryy) xAxisRot largeArcFlag sweepFlag (x2, y2)
             | otherwise =   root * ry * x1' / rx
         cx = (cos phi) * cx' - (sin phi) * cy' + ((x1+x2)/2)
         cy = (sin phi) * cx' + (cos phi) * cy' + ((y1+y2)/2)
-        dir1 = dirBetween (p2 ((x1'-cx')/rx, (y1'-cy')/ry)) origin
+        dir1 = dirBetween origin (p2 ((x1'-cx')/rx, (y1'-cy')/ry))
         v1 = r2 (( x1'-cx')/rx,  (y1'-cy')/ry)
         v2 = r2 ((-x1'-cx')/rx, (-y1'-cy')/ry)
         -- angleV1V2 is unfortunately necessary probably because of something like <https://ghc.haskell.org/trac/ghc/ticket/10010>
@@ -261,4 +272,3 @@ svgArc (rxx, ryy) xAxisRot largeArcFlag sweepFlag (x2, y2)
                   | otherwise = (signedAngleBetween v2 v1) ^. rad
         dtheta | fs == 0   = if angleV1V2 > 0 then angleV1V2 - (2*pi) else angleV1V2
                | otherwise = if angleV1V2 < 0 then angleV1V2 + (2*pi) else angleV1V2
-
