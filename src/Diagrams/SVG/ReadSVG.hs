@@ -18,6 +18,7 @@ module Diagrams.SVG.ReadSVG
     (
     -- * Main functions
       readSVGFile
+    , readSVGLBS
     , preserveAspectRatio
     , nodes
     , insertRefs
@@ -67,6 +68,7 @@ import           Data.Either.Combinators
 import qualified Data.Attoparsec.Text as AT
 import qualified Data.Attoparsec.ByteString as ABS
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Lazy as LB
 import qualified Data.ByteString.Base64 as Base64
 import           Data.Conduit
 import qualified Data.Conduit.List as CL
@@ -132,6 +134,12 @@ readSVGFile fp = if (extension fp) == (Just "svg")
   where
     catchAny :: IO a -> (SomeException -> IO a) -> IO a
     catchAny = Control.Exception.catch
+
+-- | Read SVG from a Lazy ByteString and turn it into a diagram.
+readSVGLBS :: (V b ~ V2, N b ~ n, RealFloat n, Renderable (Path V2 n) b, Renderable (DImage n Embedded) b,
+                Typeable b, Typeable n, Show n, Read n, n ~ Place, Renderable (TT.Text n) b, MonadThrow m)
+            => LB.ByteString -> m (Diagram b)
+readSVGLBS bs = runConduit $ diagram <$> (parseLBS def bs .| force "error in parseSVG: " parseSVG)
 
 diagram :: (RealFloat n, V b ~ V2, n ~ N b, Typeable n, Read n, n ~ Place) => Tag b n -> Diagram b
 diagram tr = (insertRefs ((nmap,cssmap,expandedGradMap),(0,0,100,100)) tr) # scaleY (-1) # initialStyles
