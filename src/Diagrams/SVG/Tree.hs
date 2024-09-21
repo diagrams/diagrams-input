@@ -1,4 +1,4 @@
-{-# LANGUAGE TypeFamilies, OverloadedStrings, FlexibleContexts #-}
+{-# LANGUAGE TypeFamilies, OverloadedStrings, FlexibleContexts, TypeOperators #-}
 --------------------------------------------------------------------
 -- |
 -- Module    : Diagrams.SVG.Tree

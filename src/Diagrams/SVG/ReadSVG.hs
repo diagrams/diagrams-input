@@ -1,5 +1,5 @@
 {-# LANGUAGE ConstraintKinds, DeriveDataTypeable, ExistentialQuantification, FlexibleContexts, FlexibleInstances, GADTs,
-             MultiParamTypeClasses, NoMonomorphismRestriction, OverloadedStrings, TypeFamilies, UndecidableInstances #-}
+             MultiParamTypeClasses, NoMonomorphismRestriction, OverloadedStrings, TypeFamilies, UndecidableInstances, TypeOperators #-}
 
 -------------------------------------------------------------------
 -- |

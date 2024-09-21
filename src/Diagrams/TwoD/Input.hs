@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, TypeFamilies #-}
+{-# LANGUAGE FlexibleContexts, TypeFamilies, TypeOperators #-}
 
 -----------------------------------------------------------------------------
 -- |

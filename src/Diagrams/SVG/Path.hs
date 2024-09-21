@@ -21,6 +21,7 @@ module Diagrams.SVG.Path
     )
 where
 
+import qualified Data.List.NonEmpty as NE
 import Data.Attoparsec.Combinator
 import Data.Attoparsec.Text
 import qualified Data.Attoparsec.Text as AT
@@ -68,7 +69,7 @@ parsePathCommand = do { AT.skipSpace;
                       }
 
 -- Although it makes no sense, some programs produce several M in sucession
-parse_m = do { AT.string "m"; t <- many' tuple2; return (Just $ (M Rel $ head t): (map (L Rel) (tail t)) ) } -- that's why we need many'
+parse_m = do { AT.string "m"; (ht:tt) <- many' tuple2; return (Just $ (M Rel ht): (map (L Rel) tt) ) } -- that's why we need many'
 parse_M = do { AT.string "M"; t <- many' tuple2; return (Just $ map (M Abs) t) }
 parse_z = do { AT.choice [AT.string "z", AT.string "Z"]; return (Just [Z]) }
 parse_l = do { AT.string "l"; t <- many' tuple2; return (Just $ map (L Rel) t) }
@@ -190,11 +191,14 @@ outline paths cs = paths ++ [(newPath,newPoint)]
 
   (ctrlPoint, startPoint, trail) = foldl' nextSegment ((x,y), (x,y), O []) cs
 
-  (trx,try) | null cs   = (0,0)
-            | otherwise = sel2 $ nextSegment ((x,y), (x,y), O []) (head cs) -- cs usually always starts with a M-command,
-                                                                            -- because we splitted the commands like that
-  (x,y) | null paths = (0,0)
-        | otherwise  = snd (last paths)
+  (trx,try) = case cs of
+    [] -> (0,0)
+    (c:_) -> sel2 $ nextSegment ((x,y), (x,y), O []) c -- cs usually always starts with a M-command,
+                                                       -- because we splitted the commands like that
+  (x,y) = case NE.nonEmpty paths of
+    Nothing -> (0,0)
+    Just nePaths -> snd (NE.last nePaths)
+
   sel2 (a,b,c) = a
 
 
