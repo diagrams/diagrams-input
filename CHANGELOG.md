@@ -1,3 +1,8 @@
+# v0.1.3.1 (24 Sep 2024)
+
+- Test up to GHC 9.10
+- Fix a few warnings
+
 # v0.1.3 (20 June 2023)
 
 - Add new function `readSVGLBS` to read an SVG directly from a lazy
