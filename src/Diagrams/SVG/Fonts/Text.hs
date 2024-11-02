@@ -15,7 +15,7 @@ module Diagrams.SVG.Fonts.Text
 
        ) where
 
-import Data.Default.Class
+import Data.Default
 import Diagrams.Prelude hiding (font, text)
 import qualified Data.HashMap.Strict as H
 import Data.Maybe (fromMaybe)
