@@ -1,3 +1,7 @@
+# v0.1.4 (5 Nov 2024)
+
+- Require `data-default-0.8`
+
 # v0.1.3.1 (24 Sep 2024)
 
 - Test up to GHC 9.10
