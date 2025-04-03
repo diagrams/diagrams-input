@@ -82,7 +82,7 @@ import           Data.Text.Encoding
 import           Data.Typeable (Typeable)
 import           Data.XML.Types
 import           Diagrams.Attributes
-import           Diagrams.Prelude
+import           Diagrams.Prelude hiding (def)
 import           Diagrams.TwoD.Ellipse
 import           Diagrams.TwoD.Path (isInsideEvenOdd)
 import           Diagrams.TwoD.Size

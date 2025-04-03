@@ -69,30 +69,32 @@ parsePathCommand = do { AT.skipSpace;
                       }
 
 -- Although it makes no sense, some programs produce several M in sucession
-parse_m = do { AT.string "m"; (ht:tt) <- many' tuple2; return (Just $ (M Rel ht): (map (L Rel) tt) ) } -- that's why we need many'
-parse_M = do { AT.string "M"; t <- many' tuple2; return (Just $ map (M Abs) t) }
+parse_m = do { AT.string "m"; (ht:tt) <- sepCommaSpace tuple2; return (Just $ (M Rel ht): (map (L Rel) tt) ) } -- that's why we need many'
+parse_M = do { AT.string "M"; t <- sepCommaSpace tuple2; return (Just $ map (M Abs) t) }
 parse_z = do { AT.choice [AT.string "z", AT.string "Z"]; return (Just [Z]) }
-parse_l = do { AT.string "l"; t <- many' tuple2; return (Just $ map (L Rel) t) }
-parse_L = do { AT.string "L"; t <- many' tuple2; return (Just $ map (L Abs) t) }
-parse_h = do { AT.string "h"; t <- many' spaceDouble; return (Just $ map (H Rel) t) }
-parse_H = do { AT.string "H"; t <- many' spaceDouble; return (Just $ map (H Abs) t) }
-parse_v = do { AT.string "v"; t <- many' spaceDouble; return (Just $ map (V Rel) t) }
-parse_V = do { AT.string "V"; t <- many' spaceDouble; return (Just $ map (V Abs) t) }
-parse_c = do { AT.string "c"; t <- many' tuple6; return (Just $ map (C Rel) t) }
-parse_C = do { AT.string "C"; t <- many' tuple6; return (Just $ map (C Abs) t) }
-parse_s = do { AT.string "s"; t <- many' tuple4; return (Just $ map (S Rel) t) }
-parse_S = do { AT.string "S"; t <- many' tuple4; return (Just $ map (S Abs) t) }
-parse_q = do { AT.string "q"; t <- many' tuple4; return (Just $ map (Q Rel) t) }
-parse_Q = do { AT.string "Q"; t <- many' tuple4; return (Just $ map (Q Abs) t) }
-parse_t = do { AT.string "t"; t <- many' tuple2; return (Just $ map (T Rel) t) }
-parse_T = do { AT.string "T"; t <- many' tuple2; return (Just $ map (T Abs) t) }
-parse_a = do { AT.string "a"; t <- many' tuple7; return (Just $ map (A Rel) t) }
-parse_A = do { AT.string "A"; t <- many' tuple7; return (Just $ map (A Abs) t) }
+parse_l = do { AT.string "l"; t <- sepCommaSpace tuple2; return (Just $ map (L Rel) t) }
+parse_L = do { AT.string "L"; t <- sepCommaSpace tuple2; return (Just $ map (L Abs) t) }
+parse_h = do { AT.string "h"; t <- sepCommaSpace spaceDouble; return (Just $ map (H Rel) t) }
+parse_H = do { AT.string "H"; t <- sepCommaSpace spaceDouble; return (Just $ map (H Abs) t) }
+parse_v = do { AT.string "v"; t <- sepCommaSpace spaceDouble; return (Just $ map (V Rel) t) }
+parse_V = do { AT.string "V"; t <- sepCommaSpace spaceDouble; return (Just $ map (V Abs) t) }
+parse_c = do { AT.string "c"; t <- sepCommaSpace tuple6; return (Just $ map (C Rel) t) }
+parse_C = do { AT.string "C"; t <- sepCommaSpace tuple6; return (Just $ map (C Abs) t) }
+parse_s = do { AT.string "s"; t <- sepCommaSpace tuple4; return (Just $ map (S Rel) t) }
+parse_S = do { AT.string "S"; t <- sepCommaSpace tuple4; return (Just $ map (S Abs) t) }
+parse_q = do { AT.string "q"; t <- sepCommaSpace tuple4; return (Just $ map (Q Rel) t) }
+parse_Q = do { AT.string "Q"; t <- sepCommaSpace tuple4; return (Just $ map (Q Abs) t) }
+parse_t = do { AT.string "t"; t <- sepCommaSpace tuple2; return (Just $ map (T Rel) t) }
+parse_T = do { AT.string "T"; t <- sepCommaSpace tuple2; return (Just $ map (T Abs) t) }
+parse_a = do { AT.string "a"; t <- sepCommaSpace tuple7; return (Just $ map (A Rel) t) }
+parse_A = do { AT.string "A"; t <- sepCommaSpace tuple7; return (Just $ map (A Abs) t) }
 
 -- | In SVG values can be separated with a "," but don't have to be
 withOptional parser a = do { AT.skipSpace;
                              AT.choice [ do { AT.char a; b <- parser; return b},
                                          do {            b <- parser; return b} ] }
+
+sepCommaSpace p = p `AT.sepBy'` (withOptional AT.skipSpace ',')
 
 myDouble = AT.choice [dotDouble, double]
 
