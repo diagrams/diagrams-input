@@ -1,3 +1,8 @@
+# v0.1.5 (3 April 2025)
+
+- Update SVG parser to account for optional comma separation of values ([#21](https://github.com/diagrams/diagrams-input/pull/21), thanks to @Chobbes)
+- Allow `diagrams-lib-1.5` and test on GHC 9.12
+
 # v0.1.4 (5 Nov 2024)
 
 - Require `data-default-0.8`
