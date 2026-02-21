@@ -91,7 +91,7 @@ import qualified Diagrams.TwoD.Text as TT
 import           Diagrams.SVG.Arguments
 import           Diagrams.SVG.Attributes
 import           Diagrams.SVG.Fonts.ReadFont
-import           Diagrams.SVG.Path (commands, commandsToPaths, PathCommand(..))
+import           Diagrams.SVG.Path (commands, commandsToPaths, commandsToSVGPaths, PathCommand(..))
 import           Diagrams.SVG.Tree
 import           Filesystem.Path (FilePath(..), extension)
 import           Filesystem.Path.CurrentOS (encodeString)
@@ -429,9 +429,12 @@ parsePath = tagName "{http://www.w3.org/2000/svg}path" pathAttrs $
     let st hmaps = (parseStyles style hmaps) ++
                    (parsePA  pa  hmaps) ++
                    (cssStylesFromMap hmaps "path" (id1 ca) class_)
-    let path viewbox = (mconcat $ commandsToPaths $ commands d) # applyTr (parseTr tr)
-    let f (maps,viewbox) = path viewbox # strokePath
-                                        # applyStyleSVG st maps
+    let (fillPs, strokePs) = commandsToSVGPaths (commands d)
+    let path viewbox = mconcat (fillPs ++ strokePs) # applyTr (parseTr tr)
+    let f (maps,viewbox) = ( mconcat strokePs # strokePath
+                          <> mconcat fillPs   # strokePath # lw none
+                           ) # applyStyleSVG st maps
+                             # applyTr (parseTr tr)
     return $ Leaf (id1 ca) path f
 
 -------------------------------------------------------------------------------------------------
