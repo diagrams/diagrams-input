@@ -9,6 +9,7 @@ module Diagrams.SVG.Path
     (
     -- * Converting Path Commands
       commandsToPaths
+    , commandsToSVGPaths
     , splittedCommands
     , outline
     , nextSegment
@@ -146,7 +147,17 @@ commands =  concat .
 
 -- | Convert path commands into trails
 commandsToPaths :: (RealFloat n, Show n) => [PathCommand n] -> [Path V2 n]
-commandsToPaths pathCommands = map fst $ foldl' outline [] (splittedCommands pathCommands)
+commandsToPaths pathCommands = map (\(p,_,_) -> p) $ foldl' outline [] (splittedCommands pathCommands)
+
+-- | Like 'commandsToPaths', but separates fill-only paths (closed loops from open SVG paths)
+--   from normal paths (closed loops and open stroke lines).
+--   Fill-only paths should be rendered without stroke; normal paths render as usual.
+commandsToSVGPaths :: (RealFloat n, Show n) => [PathCommand n] -> ([Path V2 n], [Path V2 n])
+commandsToSVGPaths pathCommands =
+    let tagged = foldl' outline [] (splittedCommands pathCommands)
+    in  ( [p | (p, True,  _) <- tagged]
+        , [p | (p, False, _) <- tagged]
+        )
 
 
 -- | split list when there is a Z(closePath) and also when there is a (M)oveto command (keep the M)
@@ -177,19 +188,19 @@ getTrail (Closed a) = a
 getTrail (O a)      = a
 
 -- | Take the endpoint of the latest path, append another path that has been generated from the path commands
--- and return this whole path
-outline :: (RealFloat n, Show n) => [(Path V2 n, (n, n))] -> [PathCommand n] -> [(Path V2 n, (n, n))]
-outline paths cs = paths ++ [(newPath,newPoint)]
+-- and return this whole path.  The Bool tag is True for fill-only paths (closed loops derived from open
+-- SVG paths) and False for normal paths.
+outline :: (RealFloat n, Show n) => [(Path V2 n, Bool, (n, n))] -> [PathCommand n] -> [(Path V2 n, Bool, (n, n))]
+outline paths cs = paths ++ newPaths
  where
-  newPath = translate (r2 (trx,try)) $
-            pathFromTrail $
-            if isClosed trail
-            then wrapLoop $ closeLine (mconcat (getTrail trail))
-            else wrapLoop $ closeLine (mconcat (getTrail trail)) -- unfortunately this has to be closed also, 
-                                                                 -- because some svgs fill paths that are open
+  newPaths
+    | isClosed trail = [(mk $ wrapLoop $ closeLine line, False, (trx, try))]
+    | otherwise      = [(mk $ wrapLoop $ closeLine line, True,  startPoint)  -- fill-only path
+                       ,(mk $ wrapLine             line, False, startPoint)  -- stroke path
+                       ]
 
-  newPoint | isClosed trail = (trx, try) -- the endpoint is the old startpoint
-           | otherwise      = startPoint
+  mk t = translate (r2 (trx,try)) $ pathFromTrail t
+  line = mconcat (getTrail trail)
 
   (ctrlPoint, startPoint, trail) = foldl' nextSegment ((x,y), (x,y), O []) cs
 
@@ -199,7 +210,7 @@ outline paths cs = paths ++ [(newPath,newPoint)]
                                                        -- because we splitted the commands like that
   (x,y) = case NE.nonEmpty paths of
     Nothing -> (0,0)
-    Just nePaths -> snd (NE.last nePaths)
+    Just nePaths -> (\(_,_,ep) -> ep) (NE.last nePaths)
 
   sel2 (a,b,c) = a
 
