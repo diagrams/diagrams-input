@@ -1,3 +1,7 @@
+# v0.1.5.1 (26 March 2026)
+
+- Correctly render open paths with fill ([#23](https://github.com/diagrams/diagrams-input/pull/23); thanks to Xavier Shay)
+
 # v0.1.5 (3 April 2025)
 
 - Update SVG parser to account for optional comma separation of values ([#21](https://github.com/diagrams/diagrams-input/pull/21), thanks to @Chobbes)
